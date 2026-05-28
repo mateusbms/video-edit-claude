@@ -23,6 +23,9 @@ def stage_cut(job: Job) -> None:
     kept = compute_kept_segments(silences, meta["duration"], job.config.padding, job.config.min_segment)
     write_json(job.dir / "cuts.json", [{"start": s.start, "end": s.end} for s in kept])
     cut_segments(str(src), kept, str(job.dir / "trimmed.mp4"))
+    tmeta = probe_video(str(job.dir / "trimmed.mp4"))
+    write_json(job.dir / "trimmed.probe.json",
+               {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps, "duration": tmeta.duration})
 
 
 def stage_transcribe(job: Job) -> None:

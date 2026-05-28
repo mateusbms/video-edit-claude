@@ -72,7 +72,7 @@ def cut_segments(src: str, segments: list[Segment], out_path: str) -> None:
         raise ValueError("nenhum segmento para cortar")
     between = build_select_expr(segments)
     vf = f"select='{between}',setpts=N/FRAME_RATE/TB"
-    af = f"aselect='{between}',asetpts=N/SR/STB"
+    af = f"aselect='{between}',asetpts=N/SR/TB"
     subprocess.run(
         ["ffmpeg", "-y", "-i", src, "-vf", vf, "-af", af, out_path],
         check=True,
