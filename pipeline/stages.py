@@ -1,0 +1,54 @@
+import shutil
+from pathlib import Path
+
+from pipeline.job import Job, write_json, load_json
+from pipeline.probe import probe_video
+from pipeline.silence import detect_silences, compute_kept_segments, cut_segments
+from pipeline.transcribe import transcribe_audio
+from pipeline.recipe import build_recipe
+
+
+def stage_ingest(job: Job, src_path: str) -> None:
+    dest = job.dir / "source.mp4"
+    shutil.copy(src_path, dest)
+    meta = probe_video(str(dest))
+    write_json(job.dir / "probe.json",
+               {"width": meta.width, "height": meta.height, "fps": meta.fps, "duration": meta.duration})
+
+
+def stage_cut(job: Job) -> None:
+    src = job.dir / "source.mp4"
+    meta = load_json(job.dir / "probe.json")
+    silences = detect_silences(str(src), job.config.silence_threshold_db, job.config.min_silence)
+    kept = compute_kept_segments(silences, meta["duration"], job.config.padding, job.config.min_segment)
+    write_json(job.dir / "cuts.json", [{"start": s.start, "end": s.end} for s in kept])
+    cut_segments(str(src), kept, str(job.dir / "trimmed.mp4"))
+
+
+def stage_transcribe(job: Job) -> None:
+    trimmed = job.dir / "trimmed.mp4"
+    words = transcribe_audio(str(trimmed), job.config.whisper_model, job.config.language)
+    write_json(job.dir / "transcript.json", words)
+
+
+def stage_recipe(job: Job) -> None:
+    meta = load_json(job.dir / "probe.json")
+    transcript = load_json(job.dir / "transcript.json")
+    hook = load_json(job.dir / "hook.json")
+    # transcript pode estar segmentado em linhas; achatar palavras
+    words = []
+    for line in transcript:
+        words.extend(line["words"])
+    # duração do trimmed = último timestamp (aprox.) ou probe do trimmed se existir
+    trimmed_probe = job.dir / "trimmed.probe.json"
+    if trimmed_probe.exists():
+        trimmed_duration = load_json(trimmed_probe)["duration"]
+    else:
+        trimmed_duration = words[-1]["end"] if words else 0.0
+    recipe = build_recipe(
+        width=meta["width"], height=meta["height"], fps=meta["fps"],
+        trimmed_duration=trimmed_duration, words=words,
+        hook=hook, hook_card_frames=job.config.hook_card_frames,
+        max_chars=job.config.max_caption_chars, max_gap=job.config.max_caption_gap,
+    )
+    write_json(job.dir / "edit-recipe.json", recipe)
