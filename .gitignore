@@ -10,4 +10,8 @@ jobs/
 output/
 remotion/out/
 public/
+tests/fixtures/*.mp4
+api/static/
+web/dist/
+web/node_modules/
 .DS_Store
