@@ -1,0 +1,15 @@
+{
+  "logo": "logo.png",
+  "handle": "@suamarca",
+  "colors": {
+    "bg": "#0e0e10",
+    "card": "#1a1a1e",
+    "foreground": "#ffffff",
+    "muted": "#a1a1aa",
+    "accent": "#22c55e"
+  },
+  "fonts": {
+    "heading": "Instrument Serif",
+    "body": "Inter"
+  }
+}
