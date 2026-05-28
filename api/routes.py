@@ -1,17 +1,20 @@
+import asyncio
 import os
 import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
+from api import render as render_mod
 from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
-    update_config, update_hook_card_frames,
+    update_config, update_hook_card_frames, update_whisper_model,
 )
-from api.models import CutParams, CutResult, CutSegmentOut, Hook
+from api.models import CutParams, CutResult, CutSegmentOut, Hook, TranscribeParams
+from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
-from pipeline.stages import stage_cut, stage_ingest, stage_recipe
+from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_transcribe
 
 router = APIRouter(prefix="/api")
 
@@ -142,3 +145,108 @@ def get_file(slug: str, name: str):
         if op.exists():
             return FileResponse(op, media_type="video/mp4", filename=name)
     raise HTTPException(status_code=404, detail="arquivo não disponível")
+
+
+# ---------- SSE ----------
+
+
+def _build_remotion_env() -> dict:
+    """PATH com bin/ (ffmpeg) + .tools/node*/bin (node)."""
+    env = os.environ.copy()
+    extras = [str(Path("bin").resolve())]
+    node_bin = next(Path(".tools").glob("node-*/bin"), None)
+    if node_bin:
+        extras.append(str(node_bin.resolve()))
+    env["PATH"] = ":".join(extras + [env.get("PATH", "")])
+    return env
+
+
+@router.post("/jobs/{slug}/transcribe")
+async def run_transcribe(slug: str, params: TranscribeParams):
+    jobs_root, *_ = _roots()
+    update_whisper_model(slug, jobs_root, params.model_size, params.language)
+    job = init_job(jobs_root, slug)
+
+    async def gen():
+        yield sse_event("progress", {"stage": "loading_model"})
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, stage_transcribe, job)
+        except Exception as e:
+            yield sse_event("error", {"detail": str(e)})
+            return
+        yield sse_event("done", {"ok": True})
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+def _publish_remotion_assets(slug: str, jobs_root: Path) -> Path:
+    """Copia trimmed.mp4 e brand.json para o projeto Remotion."""
+    remotion_dir = Path("remotion")
+    pub = remotion_dir / "public"
+    pub.mkdir(parents=True, exist_ok=True)
+    shutil.copy(jobs_root / slug / "trimmed.mp4", pub / "trimmed.mp4")
+    shutil.copy("brand/brand.json", remotion_dir / "src" / "brand.json")
+    return remotion_dir
+
+
+@router.post("/jobs/{slug}/render")
+async def run_render(slug: str):
+    jobs_root, _, output_root = _roots()
+    output_root.mkdir(parents=True, exist_ok=True)
+    job_dir = Path(jobs_root) / slug
+    props_path = job_dir / "edit-recipe.json"
+    if not props_path.exists():
+        raise HTTPException(status_code=409, detail="edit-recipe.json não existe; rode /recipe antes")
+
+    remotion_dir = _publish_remotion_assets(slug, jobs_root)
+    env = _build_remotion_env()
+
+    async def gen():
+        for fmt, out_name in [("Main16x9", f"{slug}-16x9.mp4"),
+                              ("Vertical9x16", f"{slug}-9x16.mp4")]:
+            out_path = output_root / out_name
+            try:
+                proc = await render_mod.run_remotion(fmt, out_path, props_path, remotion_dir, env)
+            except Exception as e:
+                yield sse_event("error", {"detail": str(e)})
+                return
+            while True:
+                raw = await proc.stdout.readline()
+                if not raw:
+                    break
+                line = raw.decode(errors="ignore").strip()
+                p = render_mod.parse_progress(line)
+                if p:
+                    kind, n, total = p
+                    yield sse_event("progress",
+                                    {"format": fmt, "kind": kind, "n": n, "total": total})
+            rc = await proc.wait()
+            if rc != 0:
+                yield sse_event("error", {"detail": f"render {fmt} retornou {rc}"})
+                return
+            yield sse_event("progress",
+                            {"format": fmt, "kind": "encoded", "n": 1, "total": 1, "done_format": True})
+        yield sse_event("done", {"ok": True})
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/jobs/{slug}/still")
+async def get_still(slug: str, frame: int = 0, format: str = "main16x9"):
+    if format not in {"main16x9", "vertical9x16"}:
+        raise HTTPException(status_code=400, detail="format inválido")
+    composition = "Main16x9" if format == "main16x9" else "Vertical9x16"
+    jobs_root, _, output_root = _roots()
+    props_path = Path(jobs_root) / slug / "edit-recipe.json"
+    if not props_path.exists():
+        raise HTTPException(status_code=409, detail="recipe ausente")
+
+    remotion_dir = _publish_remotion_assets(slug, jobs_root)
+    env = _build_remotion_env()
+
+    out = output_root / f".still-{slug}-{format}-{frame}.png"
+    proc = await render_mod.run_remotion_still(composition, out, frame, props_path, remotion_dir, env)
+    if proc.returncode != 0 or not out.exists():
+        raise HTTPException(status_code=500, detail="still falhou")
+    return FileResponse(out, media_type="image/png")
