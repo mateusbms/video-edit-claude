@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+jobs/*/trimmed.mp4
+jobs/*/source.mp4
+jobs/*/renders/
+output/
+remotion/out/
+public/
+.DS_Store
