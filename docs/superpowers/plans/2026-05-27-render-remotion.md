@@ -940,3 +940,16 @@ git commit -m "test: verificação visual + render final end-to-end (16:9 e 9:16
 - **Placeholders:** nenhum — todo passo tem código/comando concreto.
 - **Consistência de tipos:** chaves do `edit-recipe.json` casam com `pipeline/recipe.py` do Plano 1 (`segments` com `type`, `captions[].words[].fromFrame/durationInFrames`, `formats.main16x9/vertical9x16`). `TEditRecipe` (zod) é a fonte de verdade no lado TS; `Main16x9`/`Vertical9x16` recebem a recipe inteira como props, coerente com `calculateMetadata` que faz `zEditRecipe.parse(props)`.
 - **Nota para o usuário:** o spec pedia "tratamento completo" incluindo transições e overlays ricos. A v1 entrega: card de hook, legendas animadas e lower-third. Transições animadas entre cortes e overlays de motion-graphics mais elaborados (badges, números animados) ficam como **incremento pós-v1**, pois dependem de mais estrutura na recipe (eventos de overlay tipados além de `lowerThird`). Vale confirmar se isso é aceitável para a primeira versão ou se algum desses deve entrar já.
+
+---
+
+## TODOs pós-v1 (backlog — fora do escopo dos Planos 1 e 2)
+
+Pontos deixados explicitamente como TODO para depois da v1, a serem virados em planos próprios quando priorizados:
+
+- [ ] **Transições animadas entre cortes** — usar `@remotion/transitions` entre segmentos. Requer segmentar o `clip` em múltiplos `clip`s na recipe (hoje é um clip único do `trimmed.mp4`) e um tipo de evento de transição no schema.
+- [ ] **Overlays de motion-graphics ricos** — badges animados, números que sobem (estilo Sendkit, cf. [referência](../../references/SENDKIT-PH-PROMPT.md)). Requer ampliar `zOverlay` para um union tipado (`lowerThird | badge | counter | keywordPop`) e componentes dedicados.
+- [ ] **Ênfase em palavra-chave nas legendas** — "pop" de escala/cor em termos detectados como importantes (o spec menciona; a v1 só destaca a palavra ativa). Requer marcar keywords no `build_recipe` (Plano 1).
+- [ ] **Reframe vertical com face-tracking** — hoje é center-crop com `focusX` estático por clip.
+- [ ] **Cold-open do hook** — repetir o trecho de maior impacto antes do corpo (hoje o hook é só o card). Requer um segundo `clip` (do trecho do hook) antes do clip principal.
+- [ ] **Modo "vídeo do zero" (v2)** — segmento `scene` + biblioteca de cenas + TTS, reaproveitando theme/Timeline/componentes.
