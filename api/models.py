@@ -1,4 +1,9 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+RenderFormat = Literal["main16x9", "vertical9x16"]
 
 
 class ProbeOut(BaseModel):
@@ -47,6 +52,10 @@ class CutResult(BaseModel):
     original_duration: float
     trimmed_duration: float
     segments: list[CutSegmentOut]
+
+
+class RenderParams(BaseModel):
+    formats: list[RenderFormat] = Field(default_factory=lambda: ["main16x9", "vertical9x16"])
 
 
 class JobState(BaseModel):

@@ -11,7 +11,7 @@ from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
     update_config, update_hook_card_frames, update_whisper_model,
 )
-from api.models import CutParams, CutResult, CutSegmentOut, Hook, TranscribeParams
+from api.models import CutParams, CutResult, CutSegmentOut, Hook, RenderParams, TranscribeParams
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_transcribe
@@ -190,8 +190,14 @@ def _publish_remotion_assets(slug: str, jobs_root: Path) -> Path:
     return remotion_dir
 
 
+FORMAT_MAP = {
+    "main16x9": ("Main16x9", "16x9"),
+    "vertical9x16": ("Vertical9x16", "9x16"),
+}
+
+
 @router.post("/jobs/{slug}/render")
-async def run_render(slug: str):
+async def run_render(slug: str, params: RenderParams | None = None):
     jobs_root, _, output_root = _roots()
     output_root.mkdir(parents=True, exist_ok=True)
     job_dir = Path(jobs_root) / slug
@@ -199,14 +205,21 @@ async def run_render(slug: str):
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="edit-recipe.json não existe; rode /recipe antes")
 
+    selected = (params.formats if params else None) or ["main16x9", "vertical9x16"]
+    jobs_to_run = [
+        (FORMAT_MAP[f][0], f"{slug}-{FORMAT_MAP[f][1]}.mp4")
+        for f in selected if f in FORMAT_MAP
+    ]
+    if not jobs_to_run:
+        raise HTTPException(status_code=400, detail="nenhum formato selecionado")
+
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
     output_root_abs = output_root.resolve()
     env = _build_remotion_env()
 
     async def gen():
         from collections import deque
-        for fmt, out_name in [("Main16x9", f"{slug}-16x9.mp4"),
-                              ("Vertical9x16", f"{slug}-9x16.mp4")]:
+        for fmt, out_name in jobs_to_run:
             out_path = output_root_abs / out_name
             try:
                 proc = await render_mod.run_remotion(fmt, out_path, props_path, remotion_dir, env)
