@@ -195,18 +195,19 @@ async def run_render(slug: str):
     jobs_root, _, output_root = _roots()
     output_root.mkdir(parents=True, exist_ok=True)
     job_dir = Path(jobs_root) / slug
-    props_path = job_dir / "edit-recipe.json"
+    props_path = (job_dir / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="edit-recipe.json não existe; rode /recipe antes")
 
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
+    output_root_abs = output_root.resolve()
     env = _build_remotion_env()
 
     async def gen():
         from collections import deque
         for fmt, out_name in [("Main16x9", f"{slug}-16x9.mp4"),
                               ("Vertical9x16", f"{slug}-9x16.mp4")]:
-            out_path = output_root / out_name
+            out_path = output_root_abs / out_name
             try:
                 proc = await render_mod.run_remotion(fmt, out_path, props_path, remotion_dir, env)
             except Exception as e:
@@ -247,14 +248,14 @@ async def get_still(slug: str, frame: int = 0, format: str = "main16x9"):
         raise HTTPException(status_code=400, detail="format inválido")
     composition = "Main16x9" if format == "main16x9" else "Vertical9x16"
     jobs_root, _, output_root = _roots()
-    props_path = Path(jobs_root) / slug / "edit-recipe.json"
+    props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="recipe ausente")
 
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
     env = _build_remotion_env()
 
-    out = output_root / f".still-{slug}-{format}-{frame}.png"
+    out = (output_root / f".still-{slug}-{format}-{frame}.png").resolve()
     proc = await render_mod.run_remotion_still(composition, out, frame, props_path, remotion_dir, env)
     if proc.returncode != 0 or not out.exists():
         raise HTTPException(status_code=500, detail="still falhou")

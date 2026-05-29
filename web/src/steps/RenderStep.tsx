@@ -7,7 +7,7 @@ export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
   const [prog, setProg] = useState<Record<string, { n: number; total: number }>>({});
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<{ detail: string; log?: string } | null>(null);
 
   const render = async () => {
     setBusy(true); setErr(null); setDone(false); setProg({});
@@ -19,9 +19,9 @@ export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
           }
         },
         done: () => setDone(true),
-        error: (d) => setErr(d.detail ?? "erro no render"),
+        error: (d) => setErr({ detail: d.detail ?? "erro no render", log: d.log }),
       });
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { setErr({ detail: e.message }); }
     finally { setBusy(false); }
   };
 
@@ -32,7 +32,14 @@ export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
         {busy ? "Renderizando..." : "Renderizar 16:9 + 9:16"}
       </button>
-      {err && <p className="text-red-400 text-sm">{err}</p>}
+      {err && (
+        <div className="bg-red-950/40 border border-red-800 rounded p-3 text-sm space-y-2">
+          <p className="text-red-400 font-medium">{err.detail}</p>
+          {err.log && (
+            <pre className="text-xs text-red-300/80 whitespace-pre-wrap overflow-x-auto max-h-48">{err.log}</pre>
+          )}
+        </div>
+      )}
       <div className="space-y-3">
         {prog["Main16x9"] && <ProgressBar label="16:9" n={prog["Main16x9"].n} total={prog["Main16x9"].total} />}
         {prog["Vertical9x16"] && <ProgressBar label="9:16" n={prog["Vertical9x16"].n} total={prog["Vertical9x16"].total} />}
