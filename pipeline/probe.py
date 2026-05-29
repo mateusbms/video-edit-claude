@@ -9,6 +9,7 @@ class VideoMeta:
     height: int
     fps: float
     duration: float
+    nb_frames: int | None = None
 
 
 def parse_ffprobe(output: str) -> VideoMeta:
@@ -16,11 +17,17 @@ def parse_ffprobe(output: str) -> VideoMeta:
     video = next(s for s in data["streams"] if s["codec_type"] == "video")
     num, den = video["r_frame_rate"].split("/")
     fps = float(num) / float(den)
+    nb = video.get("nb_frames")
+    try:
+        nb_frames = int(nb) if nb not in (None, "N/A") else None
+    except (TypeError, ValueError):
+        nb_frames = None
     return VideoMeta(
         width=int(video["width"]),
         height=int(video["height"]),
         fps=fps,
         duration=float(data["format"]["duration"]),
+        nb_frames=nb_frames,
     )
 
 

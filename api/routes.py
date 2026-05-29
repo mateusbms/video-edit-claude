@@ -203,6 +203,7 @@ async def run_render(slug: str):
     env = _build_remotion_env()
 
     async def gen():
+        from collections import deque
         for fmt, out_name in [("Main16x9", f"{slug}-16x9.mp4"),
                               ("Vertical9x16", f"{slug}-9x16.mp4")]:
             out_path = output_root / out_name
@@ -211,19 +212,27 @@ async def run_render(slug: str):
             except Exception as e:
                 yield sse_event("error", {"detail": str(e)})
                 return
+            tail: deque[str] = deque(maxlen=15)  # últimas linhas para erro
             while True:
                 raw = await proc.stdout.readline()
                 if not raw:
                     break
                 line = raw.decode(errors="ignore").strip()
+                if not line:
+                    continue
                 p = render_mod.parse_progress(line)
                 if p:
                     kind, n, total = p
                     yield sse_event("progress",
                                     {"format": fmt, "kind": kind, "n": n, "total": total})
+                else:
+                    tail.append(line)
             rc = await proc.wait()
             if rc != 0:
-                yield sse_event("error", {"detail": f"render {fmt} retornou {rc}"})
+                yield sse_event("error", {
+                    "detail": f"render {fmt} retornou {rc}",
+                    "log": "\n".join(tail),
+                })
                 return
             yield sse_event("progress",
                             {"format": fmt, "kind": "encoded", "n": 1, "total": 1, "done_format": True})

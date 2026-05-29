@@ -13,7 +13,8 @@ def stage_ingest(job: Job, src_path: str) -> None:
     shutil.copy(src_path, dest)
     meta = probe_video(str(dest))
     write_json(job.dir / "probe.json",
-               {"width": meta.width, "height": meta.height, "fps": meta.fps, "duration": meta.duration})
+               {"width": meta.width, "height": meta.height, "fps": meta.fps,
+                "duration": meta.duration, "nb_frames": meta.nb_frames})
 
 
 def stage_cut(job: Job) -> None:
@@ -25,7 +26,8 @@ def stage_cut(job: Job) -> None:
     cut_segments(str(src), kept, str(job.dir / "trimmed.mp4"))
     tmeta = probe_video(str(job.dir / "trimmed.mp4"))
     write_json(job.dir / "trimmed.probe.json",
-               {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps, "duration": tmeta.duration})
+               {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,
+                "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
 
 
 def stage_transcribe(job: Job) -> None:
@@ -38,14 +40,16 @@ def stage_recipe(job: Job) -> None:
     meta = load_json(job.dir / "probe.json")
     transcript = load_json(job.dir / "transcript.json")
     hook = load_json(job.dir / "hook.json")
-    # transcript pode estar segmentado em linhas; achatar palavras
+    # achatar palavras de todas as linhas
     words = []
     for line in transcript:
         words.extend(line["words"])
-    # duração do trimmed = último timestamp (aprox.) ou probe do trimmed se existir
-    trimmed_probe = job.dir / "trimmed.probe.json"
-    if trimmed_probe.exists():
-        trimmed_duration = load_json(trimmed_probe)["duration"]
+    trimmed_probe_path = job.dir / "trimmed.probe.json"
+    trimmed_frames_actual = None
+    if trimmed_probe_path.exists():
+        tp = load_json(trimmed_probe_path)
+        trimmed_duration = tp["duration"]
+        trimmed_frames_actual = tp.get("nb_frames")
     else:
         trimmed_duration = words[-1]["end"] if words else 0.0
     recipe = build_recipe(
@@ -53,5 +57,6 @@ def stage_recipe(job: Job) -> None:
         trimmed_duration=trimmed_duration, words=words,
         hook=hook, hook_card_frames=job.config.hook_card_frames,
         max_chars=job.config.max_caption_chars, max_gap=job.config.max_caption_gap,
+        trimmed_frames_actual=trimmed_frames_actual,
     )
     write_json(job.dir / "edit-recipe.json", recipe)

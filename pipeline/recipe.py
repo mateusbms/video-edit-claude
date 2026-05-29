@@ -39,8 +39,14 @@ def build_recipe(
     hook_card_frames: int,
     max_chars: int = 24,
     max_gap: float = 0.6,
+    trimmed_frames_actual: int | None = None,
 ) -> dict:
-    trimmed_frames = seconds_to_frames(trimmed_duration, fps)
+    # Se temos nb_frames do ffprobe, usar diretamente — evita Remotion ler
+    # além do fim do vídeo quando duration*fps > nb_frames real.
+    if trimmed_frames_actual is not None:
+        trimmed_frames = trimmed_frames_actual
+    else:
+        trimmed_frames = seconds_to_frames(trimmed_duration, fps)
     lines = group_words_into_lines(words, max_chars=max_chars, max_gap=max_gap)
 
     captions = []
