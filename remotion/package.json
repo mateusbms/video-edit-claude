@@ -9,19 +9,22 @@
   "dependencies": {
     "@remotion/cli": "^4.0.468",
     "@remotion/google-fonts": "^4.0.468",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "remotion": "^4.0.468",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "jsdom": "^27.0.1",
-    "react-test-renderer": "^19.2.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "happy-dom": "^12.10.3",
+    "react-test-renderer": "19.2.6",
     "typescript": "^6.0.3",
+    "vite": "^5.4.2",
     "vitest": "^4.1.7"
   }
 }
