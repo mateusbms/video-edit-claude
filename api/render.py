@@ -12,17 +12,8 @@ COMPOSITION_MAP = {
     ("animated", "9x16"): "Animated9x16",
 }
 
-# Alias to map logical names → existing Remotion composition IDs until T11
-# renames the Remotion-side compositions to match the logical names.
-LEGACY_COMPOSITION_ALIAS: dict[str, str] = {
-    "Recorded16x9": "Main16x9",
-    "Recorded9x16": "Vertical9x16",
-    # Animated compositions will be introduced in T11; no alias needed yet.
-}
-
-
 def composition_id_for(recipe: dict) -> str:
-    """Return the logical composition ID for a recipe dict.
+    """Return the Remotion composition ID for a recipe dict.
 
     If *kind* is absent the recipe is treated as ``"recorded"`` (legacy
     behaviour).  Raises ``ValueError`` for unknown (kind, orientation) pairs.
@@ -35,15 +26,6 @@ def composition_id_for(recipe: dict) -> str:
     return COMPOSITION_MAP[key]
 
 
-def _remotion_composition(logical: str) -> str:
-    """Translate a logical composition name to the actual Remotion-side ID.
-
-    Once T11 renames the Remotion compositions the alias dict becomes empty
-    and this function is a no-op.
-    """
-    return LEGACY_COMPOSITION_ALIAS.get(logical, logical)
-
-
 def dispatch_render(
     job_id: str,
     recipe: dict,
@@ -53,8 +35,7 @@ def dispatch_render(
     env: dict,
 ):
     """Async coroutine: resolve composition from recipe, then call run_remotion."""
-    logical = composition_id_for(recipe)
-    composition = _remotion_composition(logical)
+    composition = composition_id_for(recipe)
     return run_remotion(
         composition=composition,
         out_path=out_path,

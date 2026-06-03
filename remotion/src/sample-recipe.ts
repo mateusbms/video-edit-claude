@@ -1,4 +1,4 @@
-import type { TEditRecipe } from "./schema";
+import type { TEditRecipe, TAnimatedRecipe } from "./schema";
 
 export const sampleRecipe: TEditRecipe = {
   fps: 30,
@@ -20,4 +20,51 @@ export const sampleRecipe: TEditRecipe = {
   ],
   overlays: [{ type: "lowerThird", fromFrame: 0, durationInFrames: 90, text: "O segredo" }],
   formats: { main16x9: { width: 1920, height: 1080 }, vertical9x16: { width: 1080, height: 1920 } },
+};
+
+const sampleBrand = {
+  slug: "sample",
+  name: "Sample Brand",
+  logo: "logo.png",
+  colors: {
+    bg: "#0e0e10",
+    card: "#1a1a1e",
+    border: "#27272a",
+    foreground: "#ffffff",
+    muted: "#a1a1aa",
+    accent: "#22c55e",
+    accentLight: "#86efac",
+  },
+  fonts: { body: "Inter", headline: "Instrument Serif" },
+};
+
+const sampleScenes = [
+  { id: "scene-1", fromFrame: 0, durationInFrames: 90, audio: "", text: "Cena 1: introdução do conteúdo principal aqui." },
+  { id: "scene-2", fromFrame: 90, durationInFrames: 90, audio: "", text: "Cena 2: desenvolvimento e conclusão do vídeo." },
+];
+
+export const defaultAnimatedRecipe16x9: TAnimatedRecipe = {
+  recipeVersion: 1,
+  kind: "animated",
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  orientation: "16x9",
+  brand: sampleBrand,
+  scenes: sampleScenes,
+  musicStartFrame: 45,
+  musicVolume: 0.15,
+};
+
+export const defaultAnimatedRecipe9x16: TAnimatedRecipe = {
+  recipeVersion: 1,
+  kind: "animated",
+  fps: 30,
+  width: 1080,
+  height: 1920,
+  orientation: "9x16",
+  brand: sampleBrand,
+  scenes: sampleScenes,
+  musicStartFrame: 45,
+  musicVolume: 0.15,
 };

@@ -1,9 +1,10 @@
 import { Composition } from "remotion";
 import { Main16x9 } from "./Main16x9";
 import { Vertical9x16 } from "./Vertical9x16";
-import { zEditRecipe, type TEditRecipe } from "./schema";
+import { AnimatedRoot } from "./animated/AnimatedRoot";
+import { zEditRecipe, AnimatedRecipeSchema, type TEditRecipe } from "./schema";
 import { totalDuration } from "./timeline-utils";
-import { sampleRecipe } from "./sample-recipe";
+import { sampleRecipe, defaultAnimatedRecipe16x9, defaultAnimatedRecipe9x16 } from "./sample-recipe";
 
 const calc = (format: "main16x9" | "vertical9x16") => ({ props }: { props: TEditRecipe }) => {
   const recipe = zEditRecipe.parse(props);
@@ -20,7 +21,7 @@ export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition
-        id="Main16x9"
+        id="Recorded16x9"
         component={Main16x9}
         defaultProps={sampleRecipe}
         schema={zEditRecipe}
@@ -31,7 +32,7 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
       />
       <Composition
-        id="Vertical9x16"
+        id="Recorded9x16"
         component={Vertical9x16}
         defaultProps={sampleRecipe}
         schema={zEditRecipe}
@@ -40,6 +41,32 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1080}
         height={1920}
+      />
+      <Composition
+        id="Animated16x9"
+        component={AnimatedRoot}
+        schema={AnimatedRecipeSchema}
+        defaultProps={defaultAnimatedRecipe16x9}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.scenes.reduce((a, s) => a + s.durationInFrames, 0),
+        })}
+      />
+      <Composition
+        id="Animated9x16"
+        component={AnimatedRoot}
+        schema={AnimatedRecipeSchema}
+        defaultProps={defaultAnimatedRecipe9x16}
+        durationInFrames={1}
+        fps={30}
+        width={1080}
+        height={1920}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.scenes.reduce((a, s) => a + s.durationInFrames, 0),
+        })}
       />
     </>
   );

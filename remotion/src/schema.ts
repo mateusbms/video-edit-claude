@@ -65,3 +65,40 @@ export type TEditRecipe = z.infer<typeof zEditRecipe>;
 export type TSegment = z.infer<typeof zSegment>;
 export type TCaption = z.infer<typeof zCaption>;
 export type TOverlay = z.infer<typeof zOverlay>;
+
+export const AnimatedRecipeSchema = z.object({
+  recipeVersion: z.literal(1),
+  kind: z.literal("animated"),
+  fps: z.number(),
+  width: z.number(),
+  height: z.number(),
+  orientation: z.enum(["16x9", "9x16"]),
+  brand: z.object({
+    slug: z.string(),
+    name: z.string(),
+    logo: z.string(),
+    colors: z.object({
+      bg: z.string(),
+      card: z.string(),
+      border: z.string(),
+      foreground: z.string(),
+      muted: z.string(),
+      accent: z.string(),
+      accentLight: z.string(),
+    }),
+    fonts: z.object({ body: z.string(), headline: z.string() }),
+  }),
+  scenes: z.array(
+    z.object({
+      id: z.string(),
+      fromFrame: z.number(),
+      durationInFrames: z.number(),
+      audio: z.string(),
+      text: z.string(),
+    })
+  ),
+  musicStartFrame: z.number().default(45),
+  musicVolume: z.number().default(0.15),
+});
+
+export type TAnimatedRecipe = z.infer<typeof AnimatedRecipeSchema>;
