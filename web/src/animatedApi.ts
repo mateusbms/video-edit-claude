@@ -16,6 +16,12 @@ export async function createBrandKit(input: FormData): Promise<BrandKit> {
   return r.json();
 }
 
+export async function updateBrandKit(slug: string, input: FormData): Promise<BrandKit> {
+  const r = await fetch(`${API}/brand-kits/${slug}`, { method: "PUT", body: input });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 export async function deleteBrandKit(slug: string): Promise<void> {
   const r = await fetch(`${API}/brand-kits/${slug}`, { method: "DELETE" });
   if (!r.ok) throw new Error(await r.text());
