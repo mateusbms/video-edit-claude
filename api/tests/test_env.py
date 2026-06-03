@@ -1,6 +1,14 @@
 import pytest
 from fastapi.testclient import TestClient
 
+# These tests use importlib.reload to re-exercise module-load env validation.
+# When a reload raises mid-way (the failing-env cases), module globals defined
+# AFTER the raise (ELEVENLABS_VOICE_ID, etc.) keep the values from the prior
+# successful load. Pytest's collection order keeps this benign today, but if
+# parallel execution or random order is introduced, switch to subprocess
+# isolation (spawn a fresh python -c "import api.app" per test) to guarantee
+# clean module state per case.
+
 
 def test_app_startup_fails_without_elevenlabs_key(monkeypatch):
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
