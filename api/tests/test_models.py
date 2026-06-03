@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from api.models import JobState, CutParams, Hook, CaptionLine, WordOut
+from api.models import JobState, CutParams, Hook, CaptionLine, WordOut, Scene
 from api.models import BrandKit, BrandColors, BrandFonts, ScriptInput, AnimatedRecipe
 
 
@@ -72,8 +72,35 @@ def test_animated_recipe_kind_locked():
             ),
             fonts=BrandFonts(body="Inter", headline="Instrument Serif"),
         ),
-        scenes=[],
+        scenes=[Scene(id="s01", fromFrame=0, durationInFrames=60, audio="a.mp3", text="hi")],
     )
     assert recipe.kind == "animated"
     with pytest.raises(ValidationError):
         recipe.model_validate(recipe.model_dump() | {"kind": "recorded"})
+
+
+def test_brand_colors_rejects_non_hex():
+    with pytest.raises(ValidationError):
+        BrandColors(
+            bg="not-a-hex", card="#ffffff", border="#e2e2dc",
+            foreground="#262622", muted="#757568",
+            accent="#16a34a", accentLight="rgba(22,163,74,0.12)",
+        )
+
+
+def test_animated_recipe_rejects_empty_scenes():
+    with pytest.raises(ValidationError):
+        AnimatedRecipe(
+            recipeVersion=1, kind="animated", fps=30, width=1920, height=1080,
+            orientation="16x9",
+            brand=BrandKit(
+                version=1, slug="acme", name="Acme", logo="logo.png",
+                colors=BrandColors(
+                    bg="#f5f5f0", card="#ffffff", border="#e2e2dc",
+                    foreground="#262622", muted="#757568",
+                    accent="#16a34a", accentLight="rgba(22,163,74,0.12)",
+                ),
+                fonts=BrandFonts(body="Inter", headline="Instrument Serif"),
+            ),
+            scenes=[],
+        )

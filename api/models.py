@@ -1,9 +1,11 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 RenderFormat = Literal["main16x9", "vertical9x16"]
+
+Hex = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{3,8}$")]
 
 
 class ProbeOut(BaseModel):
@@ -74,12 +76,12 @@ ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09"
 
 
 class BrandColors(BaseModel):
-    bg: str
-    card: str
-    border: str
-    foreground: str
-    muted: str
-    accent: str
+    bg: Hex
+    card: Hex
+    border: Hex
+    foreground: Hex
+    muted: Hex
+    accent: Hex
     accentLight: str
 
 
@@ -118,6 +120,6 @@ class AnimatedRecipe(BaseModel):
     height: int
     orientation: Literal["16x9", "9x16"]
     brand: BrandKit
-    scenes: list[Scene]
+    scenes: list[Scene] = Field(min_length=1)
     musicStartFrame: int = 45
     musicVolume: float = 0.15
