@@ -1,8 +1,10 @@
 const STEPS = ["Upload", "Cortes", "Transcrição", "Hook", "Render"];
 
-export const Stepper: React.FC<{ step: number; onJump: (s: number) => void }> = ({ step, onJump }) => (
+export const Stepper: React.FC<{ step: number; onJump: (s: number) => void; labels?: readonly string[] }> = ({ step, onJump, labels }) => {
+  const activeLabels = labels || STEPS;
+  return (
   <ol className="flex gap-2 mb-8">
-    {STEPS.map((label, i) => {
+    {activeLabels.map((label, i) => {
       const done = i < step;
       const current = i === step;
       return (
@@ -23,4 +25,5 @@ export const Stepper: React.FC<{ step: number; onJump: (s: number) => void }> = 
       );
     })}
   </ol>
-);
+  );
+};
