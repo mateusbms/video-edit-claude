@@ -9,6 +9,7 @@ from pathlib import Path
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test")
+    monkeypatch.setenv("TTS_MODE", "elevenlabs")
     monkeypatch.setattr("api.brand_kits_store.KITS_ROOT", tmp_path / "kits")
     monkeypatch.setattr("api.brand_kits_store.JOBS_ROOT", tmp_path / "jobs")
     monkeypatch.setattr("api.animated_routes.JOBS_ROOT", tmp_path / "jobs")
@@ -45,9 +46,10 @@ def test_happy_path_writes_recipe_and_dispatches_render(client, tmp_path):
         MagicMock(key=k, path=Path(f"/tmp/{k}.mp3"), seconds=2.0, frames=60)
         for k in ["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]
     ]
-    with patch("api.animated_routes.ElevenLabsClient") as Client, \
+    mock_tts_instance = MagicMock()
+    mock_tts_instance.synthesize.side_effect = fake_results
+    with patch("api.animated_routes._tts_client", return_value=mock_tts_instance), \
          patch("api.animated_routes.dispatch_render") as dispatch:
-        Client.return_value.synthesize.side_effect = fake_results
         r = client.post("/jobs/animated", json={
             "brandKitSlug": "acme",
             "scripts": _scripts(),
@@ -80,9 +82,10 @@ def test_render_is_scheduled_as_background_task(client, tmp_path):
     ]
     # Use an AsyncMock so FastAPI's BackgroundTasks can await it.
     dispatch_mock = AsyncMock()
-    with patch("api.animated_routes.ElevenLabsClient") as Client, \
+    mock_tts_instance = MagicMock()
+    mock_tts_instance.synthesize.side_effect = fake_results
+    with patch("api.animated_routes._tts_client", return_value=mock_tts_instance), \
          patch("api.animated_routes.dispatch_render", dispatch_mock):
-        Client.return_value.synthesize.side_effect = fake_results
         r = client.post("/jobs/animated", json={
             "brandKitSlug": "acme",
             "scripts": _scripts(),

@@ -13,6 +13,10 @@ BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 MAX_ATTEMPTS_PER_VOICE = 3
 BACKOFFS = [1, 3, 9]
 
+_MOCK_CHARS_PER_SECOND = 15.0
+_MOCK_MIN_SECONDS = 1.0
+_MOCK_MAX_SECONDS = 8.0
+
 
 class TTSError(RuntimeError):
     pass
@@ -39,6 +43,55 @@ def _measure_duration_seconds(path: Path) -> float:
         return float(out.decode().strip())
     except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as e:
         raise TTSError(f"ffprobe failed for {path}: {e}")
+
+
+def _mock_ffmpeg(path: Path, seconds: float) -> None:
+    """Generate a silent MP3 of the given duration using ffmpeg."""
+    subprocess.check_call(
+        [
+            "ffmpeg", "-f", "lavfi",
+            "-i", "anullsrc=channel_layout=mono:sample_rate=44100",
+            "-t", str(seconds),
+            "-c:a", "libmp3lame",
+            "-b:a", "64k",
+            "-y", str(path),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+class MockTTSClient:
+    """TTS client that generates silent MP3s locally via ffmpeg.
+
+    Used when TTS_MODE=mock to validate the full pipeline without an
+    ElevenLabs account.
+    """
+
+    def __init__(self, fps: int = 30):
+        self.fps = fps
+        # Fixed pseudo-voice-id so the cache key is stable and distinct
+        # from any real ElevenLabs voice.
+        self._voice_id = "mock"
+        self._settings: dict = {}
+
+    def _duration_for(self, text: str) -> float:
+        """Compute realistic speech duration from text length."""
+        if not text:
+            return _MOCK_MIN_SECONDS
+        seconds = len(text) / _MOCK_CHARS_PER_SECOND
+        return max(_MOCK_MIN_SECONDS, min(_MOCK_MAX_SECONDS, seconds))
+
+    def synthesize(self, key: str, text: str, audio_dir: Path) -> TTSResult:
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        h = script_hash(self._voice_id, self._settings, text)
+        path = cached_path(audio_dir, h)
+        if not path.exists():
+            planned_seconds = self._duration_for(text)
+            _mock_ffmpeg(path, planned_seconds)
+        seconds = _measure_duration_seconds(path)
+        frames = round(seconds * self.fps)
+        return TTSResult(key=key, path=path, seconds=seconds, frames=frames)
 
 
 class ElevenLabsClient:

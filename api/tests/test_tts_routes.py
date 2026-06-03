@@ -7,6 +7,7 @@ from pathlib import Path
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test")
+    monkeypatch.setenv("TTS_MODE", "elevenlabs")
     monkeypatch.setenv("TTS_MAX_CHARS_PER_JOB", "100")
     monkeypatch.setattr("api.tts_routes.JOBS_ROOT", tmp_path)
     from importlib import reload
@@ -27,8 +28,9 @@ def test_rejects_over_char_limit(client):
 
 def test_happy_path(client, tmp_path):
     fake_result = MagicMock(key="s01", path=Path("/tmp/x.mp3"), seconds=2.0, frames=60)
-    with patch("api.tts_routes.ElevenLabsClient") as Client:
-        Client.return_value.synthesize.return_value = fake_result
+    mock_tts_instance = MagicMock()
+    mock_tts_instance.synthesize.return_value = fake_result
+    with patch("api.tts_routes._tts_client", return_value=mock_tts_instance):
         r = client.post("/tts/generate", json={
             "jobId":"job1",
             "scripts":[{"key":"s01","text":"hi"}],

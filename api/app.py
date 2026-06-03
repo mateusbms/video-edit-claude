@@ -10,10 +10,15 @@ from api.brand_kits_routes import router as brand_kits_router
 from api.tts_routes import router as tts_router
 from api.animated_routes import router as animated_router
 
+TTS_MODE = os.getenv("TTS_MODE", "elevenlabs")
+if TTS_MODE not in ("elevenlabs", "mock"):
+    raise RuntimeError(f"Invalid TTS_MODE={TTS_MODE!r}; must be 'elevenlabs' or 'mock'")
+
 REQUIRED_ENV = ["ELEVENLABS_API_KEY"]
-for _var in REQUIRED_ENV:
-    if not os.getenv(_var):
-        raise RuntimeError(f"Missing required env var: {_var}")
+if TTS_MODE == "elevenlabs":
+    for _var in REQUIRED_ENV:
+        if not os.getenv(_var):
+            raise RuntimeError(f"Missing required env var: {_var}")
 
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "gJx1vCzNCD1EQHT212Ls")
 ELEVENLABS_FALLBACK_VOICE_ID = os.getenv("ELEVENLABS_FALLBACK_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5")

@@ -16,6 +16,7 @@ from api.job_queues import JOB_QUEUES, sse_event_dict, sse_format
 from pipeline.tts import ElevenLabsClient
 from pipeline.animated_recipe import build_animated_recipe
 from api.render import dispatch_render
+from api.tts_client_factory import _tts_client
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 JOBS_ROOT = Path("jobs")
@@ -65,12 +66,7 @@ async def create_animated_job(body: AnimatedJobBody, background_tasks: Backgroun
 
     append_job_log(job_dir, "job_created", "ok", brand=body.brandKitSlug, orientation=body.orientation)
 
-    client = ElevenLabsClient(
-        api_key=os.environ["ELEVENLABS_API_KEY"],
-        voice_id=os.getenv("ELEVENLABS_VOICE_ID", "gJx1vCzNCD1EQHT212Ls"),
-        fallback_voice_id=os.getenv("ELEVENLABS_FALLBACK_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5"),
-        settings=VOICE_SETTINGS,
-    )
+    client = _tts_client()
 
     scripts_map = {s.key: s.text for s in body.scripts}
     audios: dict[str, str] = {}

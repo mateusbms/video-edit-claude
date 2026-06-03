@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from api.models import ScriptInput
 from pipeline.tts import ElevenLabsClient
+from api.tts_client_factory import _tts_client
 
 router = APIRouter(prefix="/tts", tags=["tts"])
 JOBS_ROOT = Path("jobs")
@@ -38,12 +39,7 @@ def generate(body: GenerateBody):
             detail=f"Total characters {total} exceeds TTS_MAX_CHARS_PER_JOB={max_chars}",
         )
 
-    client = ElevenLabsClient(
-        api_key=os.environ["ELEVENLABS_API_KEY"],
-        voice_id=os.getenv("ELEVENLABS_VOICE_ID", "gJx1vCzNCD1EQHT212Ls"),
-        fallback_voice_id=os.getenv("ELEVENLABS_FALLBACK_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5"),
-        settings=VOICE_SETTINGS,
-    )
+    client = _tts_client()
 
     audio_dir = JOBS_ROOT / body.jobId / "audio"
     results = []

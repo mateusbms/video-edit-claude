@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
-from pipeline.tts import ElevenLabsClient, TTSError, TTSResult
+from pipeline.tts import ElevenLabsClient, MockTTSClient, TTSError, TTSResult
 
 
 SETTINGS = {"stability": 0.3, "similarity_boost": 0.8, "style": 0.8, "use_speaker_boost": True}
@@ -76,3 +76,35 @@ def test_ffprobe_missing_raises_tts_error(tmp_path):
          patch("pipeline.tts.subprocess.check_output", side_effect=FileNotFoundError("ffprobe")):
         with pytest.raises(TTSError, match="ffprobe failed"):
             client.synthesize("s01", "hi", tmp_path)
+
+
+# --- MockTTSClient tests ---
+
+def test_mock_client_generates_silent_mp3(tmp_path):
+    client = MockTTSClient(fps=30)
+    with patch("pipeline.tts._mock_ffmpeg") as mock_ff:
+        mock_ff.side_effect = lambda path, seconds: path.write_bytes(b"X" * 100)
+        with patch("pipeline.tts._measure_duration_seconds", return_value=2.1):
+            result = client.synthesize("s01", "hello world this is twenty chars", tmp_path)
+    assert result.seconds > 0
+    assert result.path.exists()
+    assert result.frames > 0
+
+
+def test_mock_client_duration_scales_with_text():
+    client = MockTTSClient(fps=30)
+    # 15 chars/sec, min 1.0, max 8.0
+    assert client._duration_for("x" * 15) == pytest.approx(1.0, abs=0.1)
+    assert client._duration_for("x" * 60) == pytest.approx(4.0, abs=0.1)
+    assert client._duration_for("") == 1.0   # min
+    assert client._duration_for("x" * 200) == 8.0  # max
+
+
+def test_mock_client_cache_skips_ffmpeg_on_second_call(tmp_path):
+    client = MockTTSClient(fps=30)
+    with patch("pipeline.tts._mock_ffmpeg") as mock_ff, \
+         patch("pipeline.tts._measure_duration_seconds", return_value=1.0):
+        mock_ff.side_effect = lambda path, seconds: path.write_bytes(b"X" * 50)
+        client.synthesize("s01", "same text", tmp_path)
+        client.synthesize("s01", "same text", tmp_path)
+    assert mock_ff.call_count == 1
