@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from api.routes import router
 from api.brand_kits_routes import router as brand_kits_router
 from api.tts_routes import router as tts_router
+from api.animated_routes import router as animated_router
 
 REQUIRED_ENV = ["ELEVENLABS_API_KEY"]
 for _var in REQUIRED_ENV:
@@ -22,6 +23,7 @@ app = FastAPI(title="Video Edit Local UI")
 app.include_router(router)
 app.include_router(brand_kits_router)
 app.include_router(tts_router)
+app.include_router(animated_router)
 
 
 @app.get("/health")
