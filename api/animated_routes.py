@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from api.models import ScriptInput
 from api import brand_kits_store
+from api.log_helpers import append_job_log
 from pipeline.tts import ElevenLabsClient
 from pipeline.animated_recipe import build_animated_recipe
 from api.render import dispatch_render
@@ -59,6 +60,8 @@ def create_animated_job(body: AnimatedJobBody):
     job_dir = JOBS_ROOT / job_id
     audio_dir = job_dir / "audio"
 
+    append_job_log(job_dir, "job_created", "ok", brand=body.brandKitSlug, orientation=body.orientation)
+
     client = ElevenLabsClient(
         api_key=os.environ["ELEVENLABS_API_KEY"],
         voice_id=os.getenv("ELEVENLABS_VOICE_ID", "gJx1vCzNCD1EQHT212Ls"),
@@ -69,10 +72,15 @@ def create_animated_job(body: AnimatedJobBody):
     scripts_map = {s.key: s.text for s in body.scripts}
     audios: dict[str, str] = {}
     durations: dict[str, int] = {}
+
+    append_job_log(job_dir, "tts", "started", n=len(body.scripts))
+
     for script in body.scripts:
         result = client.synthesize(script.key, script.text, audio_dir)
         audios[script.key] = str(result.path)
         durations[script.key] = result.frames
+
+    append_job_log(job_dir, "tts", "done", total_frames=sum(durations.values()))
 
     width, height = (1920, 1080) if body.orientation == "16x9" else (1080, 1920)
     recipe = build_animated_recipe(
@@ -90,10 +98,14 @@ def create_animated_job(body: AnimatedJobBody):
     recipe_path = job_dir / "recipe.json"
     recipe_path.write_text(json.dumps(recipe, indent=2))
 
+    append_job_log(job_dir, "recipe", "built", scenes=len(recipe["scenes"]))
+
     out_path = (job_dir / "final.mp4").resolve()
     props_path = recipe_path.resolve()
     remotion_dir = Path("remotion")
     env = _build_remotion_env()
     dispatch_render(job_id, recipe, out_path, props_path, remotion_dir, env)
+
+    append_job_log(job_dir, "render", "dispatched")
 
     return {"jobId": job_id}
