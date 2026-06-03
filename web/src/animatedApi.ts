@@ -33,3 +33,19 @@ export async function createAnimatedJob(body: {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
+export type TtsResult = {
+  key: string; file: string; seconds: number; frames: number;
+};
+
+export async function generateTts(body: {
+  jobId: string;
+  scripts: { key: string; text: string }[];
+}): Promise<TtsResult[]> {
+  const r = await fetch(`${API}/tts/generate`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}

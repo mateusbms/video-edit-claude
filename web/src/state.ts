@@ -33,6 +33,7 @@ const defaultAnimatedState: AnimatedState = {
   audioResults: null,
   orientation: "16x9",
   jobId: null,
+  previewJobId: null,
 };
 
 type StoreState = {
