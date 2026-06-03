@@ -35,3 +35,13 @@ export type SSEEvent =
   | { event: "progress"; data: { stage?: string; format?: string; n?: number; total?: number; kind?: string } }
   | { event: "done"; data: { ok: true } }
   | { event: "error"; data: { detail: string } };
+
+export type AnimatedState = {
+  brandKitSlug: string | null;
+  scripts: Record<string, string>;
+  audioResults: Array<{ key: string; file: string; seconds: number; frames: number }> | null;
+  orientation: "16x9" | "9x16";
+  jobId: string | null;
+};
+
+export const SCRIPT_KEYS = ["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"] as const;
