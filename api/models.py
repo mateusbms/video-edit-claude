@@ -68,3 +68,56 @@ class JobState(BaseModel):
     has_recipe: bool = False
     has_render_16x9: bool = False
     has_render_9x16: bool = False
+
+
+ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]
+
+
+class BrandColors(BaseModel):
+    bg: str
+    card: str
+    border: str
+    foreground: str
+    muted: str
+    accent: str
+    accentLight: str
+
+
+class BrandFonts(BaseModel):
+    body: str
+    headline: str
+
+
+class BrandKit(BaseModel):
+    version: Literal[1] = 1
+    slug: str
+    name: str
+    logo: str
+    colors: BrandColors
+    fonts: BrandFonts
+
+
+class ScriptInput(BaseModel):
+    key: ScriptKey
+    text: str
+
+
+class Scene(BaseModel):
+    id: ScriptKey
+    fromFrame: int
+    durationInFrames: int
+    audio: str
+    text: str
+
+
+class AnimatedRecipe(BaseModel):
+    recipeVersion: Literal[1] = 1
+    kind: Literal["animated"] = "animated"
+    fps: int
+    width: int
+    height: int
+    orientation: Literal["16x9", "9x16"]
+    brand: BrandKit
+    scenes: list[Scene]
+    musicStartFrame: int = 45
+    musicVolume: float = 0.15
