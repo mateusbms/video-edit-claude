@@ -31,11 +31,14 @@ def _http_post(url: str, headers: dict, payload: dict, timeout: float = 60.0):
 
 
 def _measure_duration_seconds(path: Path) -> float:
-    out = subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(path),
-    ])
-    return float(out.decode().strip())
+    try:
+        out = subprocess.check_output([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+        ])
+        return float(out.decode().strip())
+    except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as e:
+        raise TTSError(f"ffprobe failed for {path}: {e}")
 
 
 class ElevenLabsClient:
@@ -72,6 +75,10 @@ class ElevenLabsClient:
 
     def synthesize(self, key: str, text: str, audio_dir: Path) -> TTSResult:
         audio_dir.mkdir(parents=True, exist_ok=True)
+        # Cache key uses the PRIMARY voice id only. If a synthesis fell back to the
+        # secondary voice (voice_id ran out of attempts), the resulting MP3 is still
+        # cached under the primary key. Subsequent calls will reuse that file, so a
+        # voice swap is sticky for that text until the cache file is deleted.
         h = script_hash(self.voice_id, self.settings, text)
         path = cached_path(audio_dir, h)
         if not path.exists():

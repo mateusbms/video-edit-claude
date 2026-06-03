@@ -67,3 +67,12 @@ def test_final_failure_raises(tmp_path):
          patch("pipeline.tts.time.sleep"):
         with pytest.raises(TTSError):
             client.synthesize("s01", "hi", tmp_path)
+
+
+def test_ffprobe_missing_raises_tts_error(tmp_path):
+    client = make_client()
+    fake_resp = MagicMock(status_code=200, content=b"X")
+    with patch("pipeline.tts._http_post", return_value=fake_resp), \
+         patch("pipeline.tts.subprocess.check_output", side_effect=FileNotFoundError("ffprobe")):
+        with pytest.raises(TTSError, match="ffprobe failed"):
+            client.synthesize("s01", "hi", tmp_path)
