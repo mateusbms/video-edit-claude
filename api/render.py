@@ -26,7 +26,7 @@ def composition_id_for(recipe: dict) -> str:
     return COMPOSITION_MAP[key]
 
 
-def dispatch_render(
+async def dispatch_render(
     job_id: str,
     recipe: dict,
     out_path: Path,
@@ -34,15 +34,54 @@ def dispatch_render(
     remotion_dir: Path,
     env: dict,
 ):
-    """Async coroutine: resolve composition from recipe, then call run_remotion."""
+    """Await the full Remotion render and push SSE events into the job's progress queue.
+
+    Progress events are published to the per-job asyncio.Queue stored in
+    ``JOB_QUEUES[job_id]``.  Callers should create the queue *before* calling
+    this coroutine so that any consumer (SSE endpoint) can start reading
+    immediately.
+    """
+    from api.job_queues import JOB_QUEUES, sse_event_dict  # local import avoids circular
+
+    q = JOB_QUEUES.setdefault(job_id, asyncio.Queue())
+
     composition = composition_id_for(recipe)
-    return run_remotion(
-        composition=composition,
-        out_path=out_path,
-        props_path=props_path,
-        remotion_dir=remotion_dir,
-        env=env,
-    )
+    try:
+        proc = await run_remotion(
+            composition=composition,
+            out_path=out_path,
+            props_path=props_path,
+            remotion_dir=remotion_dir,
+            env=env,
+        )
+    except Exception as exc:
+        await q.put(sse_event_dict("error", {"detail": str(exc)}))
+        return
+
+    from collections import deque
+    tail: deque[str] = deque(maxlen=15)
+    while True:
+        raw = await proc.stdout.readline()
+        if not raw:
+            break
+        line = raw.decode(errors="ignore").strip()
+        if not line:
+            continue
+        p = parse_progress(line)
+        if p:
+            kind, n, total = p
+            await q.put(sse_event_dict("progress", {"kind": kind, "n": n, "total": total}))
+        else:
+            tail.append(line)
+
+    rc = await proc.wait()
+    if rc != 0:
+        await q.put(sse_event_dict("error", {
+            "detail": f"render retornou {rc}",
+            "log": "\n".join(tail),
+        }))
+    else:
+        await q.put(sse_event_dict("done", {"ok": True}))
 
 
 def parse_progress(line: str):
