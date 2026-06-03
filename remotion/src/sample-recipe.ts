@@ -38,9 +38,86 @@ const sampleBrand = {
   fonts: { body: "Inter", headline: "Instrument Serif" },
 };
 
+// 11 scenes × 65 frames each = 715 total frames (~23.8s @ 30fps)
+// fromFrames: 0, 65, 130, 195, 260, 325, 390, 455, 520, 585, 650
 const sampleScenes = [
-  { id: "scene-1", fromFrame: 0, durationInFrames: 90, audio: "", text: "Cena 1: introdução do conteúdo principal aqui." },
-  { id: "scene-2", fromFrame: 90, durationInFrames: 90, audio: "", text: "Cena 2: desenvolvimento e conclusão do vídeo." },
+  {
+    id: "s01",
+    fromFrame: 0,
+    durationInFrames: 65,
+    audio: "",
+    text: "AI-native email infrastructure",
+  },
+  {
+    id: "s02",
+    fromFrame: 65,
+    durationInFrames: 65,
+    audio: "",
+    text: "Your signup form is leaking leads — 40% never verify their email.",
+  },
+  {
+    id: "s03",
+    fromFrame: 130,
+    durationInFrames: 65,
+    audio: "",
+    text: "Dead addresses, spam traps, and typos poison your sender reputation.",
+  },
+  {
+    id: "s04",
+    fromFrame: 195,
+    durationInFrames: 65,
+    audio: "",
+    text: "Every bounced email damages your domain — and Gmail may block you permanently.",
+  },
+  {
+    id: "s05",
+    fromFrame: 260,
+    durationInFrames: 65,
+    audio: "",
+    text: "Sendkit validates every address at the point of capture — before it reaches your list.",
+  },
+  {
+    id: "s06",
+    fromFrame: 325,
+    durationInFrames: 65,
+    audio: "",
+    text: "Drop in one of our battle-tested templates: welcome, onboarding, re-engagement.",
+  },
+  {
+    id: "s06b",
+    fromFrame: 390,
+    durationInFrames: 65,
+    audio: "",
+    text: "Every email renders pixel-perfect across Gmail, Outlook, and Apple Mail.",
+  },
+  {
+    id: "s07",
+    fromFrame: 455,
+    durationInFrames: 65,
+    audio: "",
+    text: "Build multi-step flows with a visual editor — no code required.",
+  },
+  {
+    id: "s08",
+    fromFrame: 520,
+    durationInFrames: 65,
+    audio: "",
+    text: "99.2% delivery rate. 2.1× open rate vs industry average.",
+  },
+  {
+    id: "s09",
+    fromFrame: 585,
+    durationInFrames: 65,
+    audio: "",
+    text: "Ship your first email campaign in under 10 minutes.",
+  },
+  {
+    id: "s10",
+    fromFrame: 650,
+    durationInFrames: 65,
+    audio: "",
+    text: "sendkit.dev",
+  },
 ];
 
 export const defaultAnimatedRecipe16x9: TAnimatedRecipe = {
