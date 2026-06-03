@@ -47,9 +47,9 @@ export const AnimatedRoot: React.FC<any> = (recipe) => {
             );
           })}
         </Series>
-        {recipe.musicStartFrame !== undefined && (
+        {recipe.musicSrc && recipe.musicStartFrame !== undefined && (
           <Audio
-            src="/audio/music/background2.mp3"
+            src={recipe.musicSrc}
             startFrom={recipe.musicStartFrame}
             volume={recipe.musicVolume}
           />

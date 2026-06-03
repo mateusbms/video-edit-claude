@@ -97,6 +97,7 @@ export const AnimatedRecipeSchema = z.object({
       text: z.string(),
     })
   ),
+  musicSrc: z.string().optional(),
   musicStartFrame: z.number().default(45),
   musicVolume: z.number().default(0.15),
 });
