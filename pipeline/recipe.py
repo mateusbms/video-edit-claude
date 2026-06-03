@@ -69,7 +69,11 @@ def build_recipe(
             }
         )
 
+    orientation = "16x9" if width >= height else "9x16"
+
     return {
+        "kind": "recorded",
+        "orientation": orientation,
         "fps": fps,
         "source": {"width": width, "height": height, "trimmedFrames": trimmed_frames},
         "segments": [
