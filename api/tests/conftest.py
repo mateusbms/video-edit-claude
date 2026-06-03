@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+# Ensure required env vars are set before importing api.app (which validates them at module load)
+os.environ.setdefault("ELEVENLABS_API_KEY", "test-key-conftest")
+
 from api.app import app
 
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,12 +7,26 @@ from fastapi.staticfiles import StaticFiles
 
 from api.routes import router
 
+REQUIRED_ENV = ["ELEVENLABS_API_KEY"]
+for _var in REQUIRED_ENV:
+    if not os.getenv(_var):
+        raise RuntimeError(f"Missing required env var: {_var}")
+
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "gJx1vCzNCD1EQHT212Ls")
+ELEVENLABS_FALLBACK_VOICE_ID = os.getenv("ELEVENLABS_FALLBACK_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5")
+TTS_MAX_CHARS_PER_JOB = int(os.getenv("TTS_MAX_CHARS_PER_JOB", "4000"))
+
 app = FastAPI(title="Video Edit Local UI")
 app.include_router(router)
 
 
-@app.get("/api/health")
+@app.get("/health")
 def health():
+    return {"ok": True}
+
+
+@app.get("/api/health")
+def api_health():
     return {"status": "ok"}
 
 
