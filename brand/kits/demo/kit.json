@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "slug": "demo",
+  "name": "Demo",
+  "logo": "logo.png",
+  "colors": {
+    "bg": "#f5f5f0",
+    "card": "#ffffff",
+    "border": "#e2e2dc",
+    "foreground": "#262622",
+    "muted": "#757568",
+    "accent": "#16a34a",
+    "accentLight": "rgba(22,163,74,0.12)"
+  },
+  "fonts": {
+    "body": "Inter",
+    "headline": "Instrument Serif"
+  }
+}
