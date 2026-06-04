@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -40,6 +41,17 @@ def _build_remotion_env() -> dict:
     return env
 
 
+def _publish_brand_logo(slug: str, remotion_dir: Path) -> None:
+    """Copy brand kit logo to remotion/public/brand/<slug>/logo.png so that
+    `staticFile("brand/<slug>/logo.png")` inside AnimatedRoot resolves."""
+    src = brand_kits_store.KITS_ROOT / slug / "logo.png"
+    if not src.exists():
+        return
+    dst_dir = remotion_dir / "public" / "brand" / slug
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(src, dst_dir / "logo.png")
+
+
 class AnimatedJobBody(BaseModel):
     brandKitSlug: str
     scripts: list[ScriptInput]
@@ -74,9 +86,10 @@ async def create_animated_job(body: AnimatedJobBody, background_tasks: Backgroun
 
     append_job_log(job_dir, "tts", "started", n=len(body.scripts))
 
+    api_base = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
     for script in body.scripts:
         result = client.synthesize(script.key, script.text, audio_dir)
-        audios[script.key] = str(result.path)
+        audios[script.key] = f"{api_base}/jobs/{job_id}/audio/{Path(result.path).name}"
         durations[script.key] = result.frames
 
     append_job_log(job_dir, "tts", "done", total_frames=sum(durations.values()))
@@ -106,6 +119,10 @@ async def create_animated_job(body: AnimatedJobBody, background_tasks: Backgroun
     props_path = recipe_path.resolve()
     remotion_dir = Path("remotion")
     env = _build_remotion_env()
+
+    # Publish the brand kit's logo into remotion/public so the static-file URL
+    # `staticFile("brand/<slug>/logo.png")` referenced by AnimatedRoot resolves.
+    _publish_brand_logo(kit.slug, remotion_dir)
 
     # Schedule the render as a background task so the HTTP response returns
     # immediately with the job_id (matching the recorded flow where the client
@@ -160,3 +177,19 @@ def animated_job_output(job_id: str):
     if not out_path.exists():
         raise HTTPException(status_code=404, detail="Output not ready yet")
     return FileResponse(out_path, media_type="video/mp4", filename=f"{job_id}.mp4")
+
+
+@router.get("/{job_id}/audio/{filename}")
+def animated_job_audio(job_id: str, filename: str):
+    """Serve a per-scene audio MP3 by hashed filename.
+
+    Remotion fetches each scene's <Audio src=...> from this endpoint during
+    rendering. The recipe builder writes URLs of the form
+    `<API_BASE_URL>/jobs/<job_id>/audio/<hash>.mp3` into scenes[i].audio.
+    """
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = JOBS_ROOT / job_id / "audio" / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return FileResponse(path, media_type="audio/mpeg")

@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Audio, Series } from "remotion";
+import { AbsoluteFill, Audio, Series, staticFile } from "remotion";
 import { ThemeProvider } from "./theme/Provider";
 import { Scene01Intro } from "./scenes/Scene01Intro";
 import { Scene02Signups } from "./scenes/Scene02Signups";
@@ -41,7 +41,7 @@ export const AnimatedRoot: React.FC<any> = (recipe) => {
                   durationInFrames={s.durationInFrames}
                   audioSrc={s.audio}
                   productName={recipe.brand?.name}
-                  logoSrc={`/brand/${recipe.brand?.slug}/logo.png`}
+                  logoSrc={staticFile(`brand/${recipe.brand?.slug}/logo.png`)}
                 />
               </Series.Sequence>
             );
