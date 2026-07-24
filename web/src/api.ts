@@ -65,6 +65,10 @@ export function fileUrl(slug: string, name: string): string {
   return `${BASE}/jobs/${slug}/files/${name}`;
 }
 
+export function mediaUrl(slug: string, name: string): string {
+  return `${BASE}/jobs/${slug}/files/${name}`;
+}
+
 /** Parser puro de chunk SSE — exportado para teste. */
 export function parseSSEChunk(chunk: string): SSEEvent[] {
   const out: SSEEvent[] = [];
