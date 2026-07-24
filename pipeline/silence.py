@@ -59,7 +59,7 @@ def build_select_expr(segments: list[Segment]) -> str:
 
 def detect_silences(path: str, noise_db: float = -30.0, min_silence: float = 0.5) -> list[tuple[float, float]]:
     result = subprocess.run(
-        ["ffmpeg", "-i", path, "-af",
+        ["ffmpeg", "-i", path, "-vn", "-af",
          f"silencedetect=noise={noise_db}dB:d={min_silence}", "-f", "null", "-"],
         capture_output=True, text=True,
     )

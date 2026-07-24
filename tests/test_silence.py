@@ -1,4 +1,13 @@
-from pipeline.silence import parse_silences, compute_kept_segments, Segment, build_select_expr
+import os
+import shutil
+import subprocess
+from pathlib import Path
+import pytest
+from pipeline.silence import parse_silences, compute_kept_segments, Segment, build_select_expr, detect_silences
+
+_REPO_BIN = Path(__file__).resolve().parents[1] / "bin"
+os.environ["PATH"] = f"{_REPO_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+_needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg indisponível")
 
 
 def test_parse_silences_pairs_starts_and_ends():
@@ -36,3 +45,20 @@ def test_compute_kept_segments_drops_tiny_segments():
 def test_build_select_expr_joins_segments():
     expr = build_select_expr([Segment(0.0, 2.0), Segment(3.5, 10.0)])
     assert expr == "between(t,0.000,2.000)+between(t,3.500,10.000)"
+
+
+@_needs_ffmpeg
+def test_detect_silences_finds_gap(tmp_path):
+    clip = tmp_path / "c.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y",
+         "-f", "lavfi", "-i", "color=c=black:s=320x240:d=3",
+         "-f", "lavfi", "-i", "sine=frequency=440:d=3",
+         "-af", "volume='if(lt(t,1)+gt(t,2),1,0)':eval=frame",
+         "-shortest", "-pix_fmt", "yuv420p", str(clip)],
+        capture_output=True, check=True,
+    )
+    silences = detect_silences(str(clip), noise_db=-30.0, min_silence=0.3)
+    assert len(silences) >= 1
+    s_start, s_end = silences[0]
+    assert 0.8 < s_start < 1.6
