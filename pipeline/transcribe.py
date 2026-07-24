@@ -1,3 +1,6 @@
+import threading
+
+
 def words_from_segments(segments) -> list[dict]:
     lines = []
     for seg in segments:
@@ -12,13 +15,17 @@ def words_from_segments(segments) -> list[dict]:
 
 
 _MODEL_CACHE: dict[str, object] = {}
+_MODEL_LOCK = threading.Lock()
 
 
 def _get_model(model_size: str):
-    if model_size not in _MODEL_CACHE:
-        from faster_whisper import WhisperModel  # import tardio: dep pesada
-        _MODEL_CACHE[model_size] = WhisperModel(model_size, device="cpu", compute_type="int8")
-    return _MODEL_CACHE[model_size]
+    # stage_transcribe roda em run_in_executor (thread); o lock evita construir
+    # o modelo duas vezes se duas transcrições coincidirem.
+    with _MODEL_LOCK:
+        if model_size not in _MODEL_CACHE:
+            from faster_whisper import WhisperModel  # import tardio: dep pesada
+            _MODEL_CACHE[model_size] = WhisperModel(model_size, device="cpu", compute_type="int8")
+        return _MODEL_CACHE[model_size]
 
 
 def transcribe_audio(path: str, model_size: str = "base", language: str = "pt") -> list[dict]:

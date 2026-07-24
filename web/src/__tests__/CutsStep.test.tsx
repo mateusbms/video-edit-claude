@@ -24,4 +24,20 @@ describe("CutsStep preview", () => {
       expect(v!.getAttribute("src")).toContain("/files/trimmed.mp4");
     });
   });
+
+  it("clicar num trecho pula para o tempo NO VÍDEO CORTADO (não o original)", async () => {
+    const { container } = render(<CutsStep {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
+    const video = await waitFor(() => {
+      const v = container.querySelector("video");
+      expect(v).not.toBeNull();
+      return v as HTMLVideoElement;
+    });
+    // segmentos: [0,3] e [5,8]. No trimmed.mp4 (contíguo) o 2º trecho começa em 3s,
+    // não em 5s (o timestamp original). O clique deve levar a 3s.
+    const seg2 = container.querySelector('[title="Ir para 00:03"]');
+    expect(seg2).not.toBeNull();
+    fireEvent.click(seg2!);
+    expect(video.currentTime).toBe(3);
+  });
 });

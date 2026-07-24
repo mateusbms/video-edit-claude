@@ -15,7 +15,9 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const seek = (t: number) => {
     const v = videoRef.current;
-    if (v) { v.currentTime = t; v.play().catch(() => {}); }
+    if (!v) return;
+    v.currentTime = t;
+    v.play()?.catch(() => {});
   };
 
   const onCut = async () => {
@@ -58,21 +60,25 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
             {(() => {
               const total = result.original_duration;
               let cursor = 0;
+              // tempo acumulado no vídeo JÁ CORTADO (trimmed.mp4 é contíguo/zero-based)
+              let trimmedCursor = 0;
               const parts: React.ReactElement[] = [];
               result.segments.forEach((s, i) => {
                 if (s.start > cursor) {
                   parts.push(<div key={`g${i}`} style={{ width: `${((s.start - cursor) / total) * 100}%` }} className="bg-zinc-700" />);
                 }
+                const trimmedStart = trimmedCursor;
                 parts.push(
                   <div
                     key={`s${i}`}
-                    onClick={() => seek(s.start)}
-                    title={`Ir para ${formatSeconds(s.start)}`}
+                    onClick={() => seek(trimmedStart)}
+                    title={`Ir para ${formatSeconds(trimmedStart)}`}
                     style={{ width: `${((s.end - s.start) / total) * 100}%`, cursor: "pointer" }}
                     className="bg-emerald-500"
                   />
                 );
                 cursor = s.end;
+                trimmedCursor += s.end - s.start;
               });
               if (cursor < total) parts.push(<div key="end" style={{ width: `${((total - cursor) / total) * 100}%` }} className="bg-zinc-700" />);
               return parts;
