@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 
 from pipeline.job import Job, write_json, load_json
@@ -6,11 +5,12 @@ from pipeline.probe import probe_video
 from pipeline.silence import detect_silences, compute_kept_segments, cut_segments
 from pipeline.transcribe import transcribe_audio
 from pipeline.recipe import build_recipe
+from pipeline.concat import concat_videos
 
 
-def stage_ingest(job: Job, src_path: str) -> None:
+def stage_ingest(job: Job, src_paths: list[str]) -> None:
     dest = job.dir / "source.mp4"
-    shutil.copy(src_path, dest)
+    concat_videos([str(p) for p in src_paths], str(dest))
     meta = probe_video(str(dest))
     write_json(job.dir / "probe.json",
                {"width": meta.width, "height": meta.height, "fps": meta.fps,

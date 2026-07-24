@@ -17,7 +17,7 @@ def main() -> None:
     if args.stage == "ingest":
         if not args.src:
             parser.error("--src é obrigatório no estágio ingest")
-        stage_ingest(job, args.src)
+        stage_ingest(job, [args.src])
         print(f"[ingest] ok -> {job.dir/'probe.json'}")
     elif args.stage == "cut":
         stage_cut(job)

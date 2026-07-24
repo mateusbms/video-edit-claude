@@ -37,7 +37,7 @@ async def create_job(file: UploadFile = File(...), slug: str = Form(default="job
         shutil.copyfileobj(file.file, out)
     job = init_job(jobs_root, slug)
     try:
-        stage_ingest(job, str(upload_path))
+        stage_ingest(job, [str(upload_path)])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ingest falhou: {e}")
     state = get_state(slug, jobs_root)
