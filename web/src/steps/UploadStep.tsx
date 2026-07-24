@@ -32,7 +32,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     setBusy(true); setErr(null);
     try {
       const r = await uploadJob(files, localSlug);
-      setSlug(r.slug); setProbe(r.probe);
+      setSlug(r.slug); setProbe(r.probe); setFiles([]);
     } catch (e: any) {
       setErr(e.message ?? "erro no upload");
     } finally {
