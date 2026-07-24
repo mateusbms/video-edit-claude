@@ -6,7 +6,7 @@ def _upload(client, sample_mp4, slug):
         return client.post(
             "/api/jobs",
             data={"slug": slug},
-            files={"file": ("s.mp4", f, "video/mp4")},
+            files=[("files", ("s.mp4", f, "video/mp4"))],
         )
 
 

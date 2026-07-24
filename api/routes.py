@@ -28,16 +28,23 @@ def _roots() -> tuple[Path, Path, Path]:
 
 
 @router.post("/jobs")
-async def create_job(file: UploadFile = File(...), slug: str = Form(default="job")):
+async def create_job(
+    files: list[UploadFile] = File(...), slug: str = Form(default="job")
+):
     jobs_root, input_root, _ = _roots()
     input_root.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file.filename or "").suffix or ".mp4"
-    upload_path = input_root / f"{slug}{suffix}"
-    with upload_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    if not files:
+        raise HTTPException(status_code=400, detail="envie ao menos um arquivo")
+    paths: list[str] = []
+    for i, f in enumerate(files):
+        suffix = Path(f.filename or "").suffix or ".mp4"
+        upload_path = input_root / f"{slug}-part{i}{suffix}"
+        with upload_path.open("wb") as out:
+            shutil.copyfileobj(f.file, out)
+        paths.append(str(upload_path))
     job = init_job(jobs_root, slug)
     try:
-        stage_ingest(job, [str(upload_path)])
+        stage_ingest(job, paths)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ingest falhou: {e}")
     state = get_state(slug, jobs_root)
