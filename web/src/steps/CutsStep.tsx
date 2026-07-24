@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { runCut } from "../api";
+import { useRef, useState } from "react";
+import { runCut, mediaUrl } from "../api";
 import { Slider } from "../components/Slider";
 import { formatSeconds, percentage } from "../util";
 import type { CutResult, CutParams } from "../types";
@@ -12,6 +12,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [result, setResult] = useState<CutResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const seek = (t: number) => {
+    const v = videoRef.current;
+    if (v) { v.currentTime = t; v.play().catch(() => {}); }
+  };
 
   const onCut = async () => {
     setBusy(true); setErr(null);
@@ -58,13 +63,27 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                 if (s.start > cursor) {
                   parts.push(<div key={`g${i}`} style={{ width: `${((s.start - cursor) / total) * 100}%` }} className="bg-zinc-700" />);
                 }
-                parts.push(<div key={`s${i}`} style={{ width: `${((s.end - s.start) / total) * 100}%` }} className="bg-emerald-500" />);
+                parts.push(
+                  <div
+                    key={`s${i}`}
+                    onClick={() => seek(s.start)}
+                    title={`Ir para ${formatSeconds(s.start)}`}
+                    style={{ width: `${((s.end - s.start) / total) * 100}%`, cursor: "pointer" }}
+                    className="bg-emerald-500"
+                  />
+                );
                 cursor = s.end;
               });
               if (cursor < total) parts.push(<div key="end" style={{ width: `${((total - cursor) / total) * 100}%` }} className="bg-zinc-700" />);
               return parts;
             })()}
           </div>
+          <video
+            ref={videoRef}
+            src={mediaUrl(slug, "trimmed.mp4")}
+            controls
+            className="w-full rounded border border-zinc-800 mt-2"
+          />
         </div>
       )}
       <div className="pt-4 flex justify-between">
