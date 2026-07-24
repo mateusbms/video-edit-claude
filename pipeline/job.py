@@ -9,7 +9,7 @@ class JobConfig:
     min_silence: float = 0.5
     padding: float = 0.1
     min_segment: float = 0.3
-    whisper_model: str = "small"
+    whisper_model: str = "base"
     language: str = "pt"
     hook_card_frames: int = 90
     max_caption_chars: int = 24

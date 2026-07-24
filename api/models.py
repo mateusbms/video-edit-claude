@@ -22,7 +22,7 @@ class CutParams(BaseModel):
 
 
 class TranscribeParams(BaseModel):
-    model_size: str = "small"  # tiny|base|small|medium
+    model_size: str = "base"  # tiny|base|small|medium
     language: str = "pt"
 
 
