@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
-import { getTranscript, putTranscript, streamSSE } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { getTranscript, putTranscript, streamSSE, mediaUrl } from "../api";
+import { CaptionOverlay } from "../components/CaptionOverlay";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
 
 export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
-  const [model, setModel] = useState("small");
+  const [model, setModel] = useState("base");
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState("");
   const [lines, setLines] = useState<CaptionLine[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
@@ -52,8 +55,8 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
           <select className="block bg-zinc-900 border border-zinc-800 rounded px-2 py-2"
             value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="tiny">tiny (rápido)</option>
-            <option value="base">base</option>
-            <option value="small">small (padrão)</option>
+            <option value="base">base (padrão)</option>
+            <option value="small">small</option>
             <option value="medium">medium (melhor)</option>
           </select>
         </label>
@@ -63,6 +66,18 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
         </button>
       </div>
       {err && <p className="text-red-400 text-sm">{err}</p>}
+      {lines && (
+        <div className="relative">
+          <video
+            ref={videoRef}
+            src={mediaUrl(slug, "trimmed.mp4")}
+            controls
+            onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
+            className="w-full rounded border border-zinc-800"
+          />
+          <CaptionOverlay lines={lines} currentTime={now} />
+        </div>
+      )}
       {lines && (
         <div className="space-y-3 max-h-[50vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded p-4">
           {lines.map((l, li) => (
