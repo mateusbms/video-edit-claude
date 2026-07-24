@@ -198,8 +198,8 @@ def _publish_remotion_assets(slug: str, jobs_root: Path) -> Path:
 
 
 FORMAT_MAP = {
-    "main16x9": ("Main16x9", "16x9"),
-    "vertical9x16": ("Vertical9x16", "9x16"),
+    "main16x9": ("Recorded16x9", "16x9"),
+    "vertical9x16": ("Recorded9x16", "9x16"),
 }
 
 
@@ -264,9 +264,9 @@ async def run_render(slug: str, params: RenderParams | None = None):
 
 @router.get("/jobs/{slug}/still")
 async def get_still(slug: str, frame: int = 0, format: str = "main16x9"):
-    if format not in {"main16x9", "vertical9x16"}:
+    if format not in FORMAT_MAP:
         raise HTTPException(status_code=400, detail="format inválido")
-    composition = "Main16x9" if format == "main16x9" else "Vertical9x16"
+    composition = FORMAT_MAP[format][0]
     jobs_root, _, output_root = _roots()
     props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
     if not props_path.exists():
