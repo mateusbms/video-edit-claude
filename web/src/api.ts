@@ -13,9 +13,9 @@ async function jsonOrThrow<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export async function uploadJob(file: File, slug: string): Promise<{ slug: string; probe: any }> {
+export async function uploadJob(files: File[], slug: string): Promise<{ slug: string; probe: any }> {
   const fd = new FormData();
-  fd.append("file", file);
+  files.forEach((f) => fd.append("files", f));
   fd.append("slug", slug);
   return jsonOrThrow(await fetch(`${BASE}/jobs`, { method: "POST", body: fd }));
 }
