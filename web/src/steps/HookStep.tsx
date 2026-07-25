@@ -43,16 +43,16 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
           value={hook.subtitle} onChange={(e) => setHook({ ...hook, subtitle: e.target.value })} />
       </label>
       <label className="block">
-        <span className="text-sm text-zinc-400">Duração do card (frames)</span>
+        <span className="text-sm text-zinc-400">Duração do texto (frames)</span>
         <input type="number" className="mt-1 block w-32 bg-zinc-900 border border-zinc-800 rounded px-3 py-2"
           value={hook.duration_frames}
           onChange={(e) => setHook({ ...hook, duration_frames: Number(e.target.value) })} />
       </label>
       {err && <p className="text-red-400 text-sm">{err}</p>}
       <div>
-        <p className="text-sm text-zinc-400 mb-2">Prévia (atualiza ~1s após parar de digitar):</p>
+        <p className="text-sm text-zinc-400 mb-2">O texto aparece animado sobre o início do vídeo. Prévia (atualiza ~1s após parar de digitar):</p>
         <img
-          key={imgKey} src={`${stillUrl(slug, 30, "main16x9")}&_=${imgKey}`}
+          key={imgKey} src={`${stillUrl(slug, 20, "main16x9")}&_=${imgKey}`}
           alt="prévia"
           className="rounded border border-zinc-800 w-full max-w-2xl"
         />
