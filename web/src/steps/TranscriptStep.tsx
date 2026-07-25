@@ -87,16 +87,16 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
         </div>
       )}
       {lines && (
-        <div className="space-y-3 max-h-[50vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded p-4">
+        <div className="max-h-[65vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded p-4 text-base leading-relaxed space-y-1">
           {lines.map((l, li) => (
-            <div key={li} className="flex flex-wrap gap-1 items-baseline">
-              <span className="text-xs text-zinc-500 font-mono mr-2">{l.start.toFixed(1)}s</span>
+            <div key={li} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-2 py-2 rounded hover:bg-zinc-800/50">
+              <span className="text-xs text-zinc-500 font-mono w-12 shrink-0">{l.start.toFixed(1)}s</span>
               {l.words.map((w, wi) => (
                 <input
                   key={wi} value={w.word} onChange={(e) => editWord(li, wi, e.target.value)}
                   onBlur={save}
-                  className="bg-transparent border-b border-zinc-700 focus:border-emerald-500 outline-none px-1"
-                  style={{ width: `${Math.max(2, w.word.length)}ch` }}
+                  className="bg-transparent border-b border-transparent hover:border-zinc-700 focus:border-emerald-500 outline-none px-0.5 text-zinc-100"
+                  style={{ width: `${Math.max(3, w.word.length + 1)}ch` }}
                 />
               ))}
             </div>
