@@ -84,3 +84,30 @@ def test_build_recipe_caption_style_overrides_brand():
     cs = r["captionStyle"]
     assert cs["color"] == "#ff0000"
     assert cs["fontFamily"] == "Inter"
+
+
+def test_stage_recipe_uses_brand_kit(tmp_path, monkeypatch):
+    import json as _json
+    import dataclasses
+    from pathlib import Path
+    from pipeline.job import init_job, write_json
+    from pipeline.stages import stage_recipe
+    monkeypatch.chdir(tmp_path)
+    kit_dir = Path("brand/kits/acme"); kit_dir.mkdir(parents=True)
+    (kit_dir / "kit.json").write_text(_json.dumps({
+        "version": 1, "slug": "acme", "name": "Acme", "logo": "logo.png",
+        "colors": {"bg": "#000", "card": "#111", "border": "#222", "foreground": "#abcdef",
+                   "muted": "#333", "accent": "#654321", "accentLight": "#444"},
+        "fonts": {"body": "Poppins", "headline": "Inter"},
+    }))
+    job = init_job(Path("jobs"), "j1")
+    job.config.brand_kit_slug = "acme"
+    write_json(job.dir / "job.config.json", dataclasses.asdict(job.config))
+    write_json(job.dir / "probe.json", {"width": 1920, "height": 1080, "fps": 30, "duration": 1.0})
+    write_json(job.dir / "transcript.json", [{"text": "a", "start": 0.0, "end": 0.5, "words": [{"word": "a", "start": 0.0, "end": 0.5}]}])
+    write_json(job.dir / "hook.json", {"title": "T", "subtitle": ""})
+    job = init_job(Path("jobs"), "j1")  # reload config from disk
+    stage_recipe(job)
+    recipe = _json.loads((job.dir / "edit-recipe.json").read_text())
+    assert recipe["captionStyle"]["color"] == "#abcdef"
+    assert recipe["captionStyle"]["fontFamily"] == "Poppins"

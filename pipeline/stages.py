@@ -77,6 +77,12 @@ def stage_recipe(job: Job) -> None:
         trimmed_frames_actual = tp.get("nb_frames")
     else:
         trimmed_duration = words[-1]["end"] if words else 0.0
+    brand = None
+    if job.config.brand_kit_slug:
+        from api.brand_kits_store import load_kit
+        kit = load_kit(job.config.brand_kit_slug)
+        if kit:
+            brand = {"colors": kit.colors.model_dump(), "fonts": kit.fonts.model_dump()}
     recipe = build_recipe(
         width=meta["width"], height=meta["height"], fps=meta["fps"],
         trimmed_duration=trimmed_duration, words=words,
@@ -90,6 +96,6 @@ def stage_recipe(job: Job) -> None:
             "highlightColor": job.config.caption_highlight,
             "fontFamily": job.config.caption_font,
         },
-        brand=None,
+        brand=brand,
     )
     write_json(job.dir / "edit-recipe.json", recipe)
