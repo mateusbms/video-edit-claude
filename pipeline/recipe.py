@@ -36,7 +36,7 @@ def build_recipe(
     trimmed_duration: float,
     words: list[dict],
     hook: dict,
-    hook_card_frames: int,
+    hook_card_frames: int = 0,
     max_chars: int = 24,
     max_gap: float = 0.6,
     trimmed_frames_actual: int | None = None,
@@ -84,18 +84,42 @@ def build_recipe(
         "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
     }
 
+    duration_frames = hook.get("duration_frames", 90)
+    hook_overlays = [
+        {
+            "id": "ov_hook",
+            "type": "hook",
+            "text": hook["title"],
+            "fromFrame": 0,
+            "durationInFrames": duration_frames,
+            "x": 0.5, "y": 0.16, "anchor": "center",
+            "fontSize": 84, "color": "", "highlightColor": "", "fontFamily": "",
+            "enter": "slide-up", "exit": "fade",
+            "enterDurationInFrames": 12, "exitDurationInFrames": 12,
+        }
+    ]
+    subtitle = hook.get("subtitle", "")
+    if subtitle:
+        hook_overlays.append(
+            {
+                "id": "ov_hook_sub",
+                "type": "text",
+                "text": subtitle,
+                "fromFrame": 6,
+                "durationInFrames": max(1, duration_frames - 6),
+                "x": 0.5, "y": 0.24, "anchor": "center",
+                "fontSize": 40, "color": "", "highlightColor": "", "fontFamily": "",
+                "enter": "slide-up", "exit": "fade",
+                "enterDurationInFrames": 12, "exitDurationInFrames": 12,
+            }
+        )
+
     return {
         "kind": "recorded",
         "orientation": orientation,
         "fps": fps,
         "source": {"width": width, "height": height, "trimmedFrames": trimmed_frames},
         "segments": [
-            {
-                "type": "card",
-                "durationInFrames": hook_card_frames,
-                "title": hook["title"],
-                "subtitle": hook.get("subtitle", ""),
-            },
             {
                 "type": "clip",
                 "source": "trimmed.mp4",
@@ -106,14 +130,7 @@ def build_recipe(
         ],
         "captions": captions,
         "captionStyle": resolved_caption_style,
-        "overlays": [
-            {
-                "type": "lowerThird",
-                "fromFrame": 0,
-                "durationInFrames": hook_card_frames,
-                "text": hook["title"],
-            }
-        ],
+        "overlays": hook_overlays,
         "formats": {
             "main16x9": {"width": 1920, "height": 1080},
             "vertical9x16": {"width": 1080, "height": 1920},

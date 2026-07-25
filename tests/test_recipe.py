@@ -30,30 +30,59 @@ def test_group_words_breaks_on_gap():
     assert lines[1]["start"] == 2.0
 
 
-def test_build_recipe_offsets_captions_by_hook_card():
+def test_build_recipe_hook_overlay_and_no_card():
     words = [_w("ola", 0.0, 0.5), _w("pessoal", 0.5, 1.0)]
     recipe = build_recipe(
         width=1920, height=1080, fps=30, trimmed_duration=2.0,
         words=words,
-        hook={"title": "O segredo", "subtitle": "em 60s"},
-        hook_card_frames=90,
+        hook={"title": "O segredo", "subtitle": "em 60s", "duration_frames": 90},
         max_chars=99, max_gap=5.0,
     )
     assert recipe["fps"] == 30
     assert recipe["source"]["trimmedFrames"] == 60
-    # primeiro segmento: card; segundo: clip
-    assert recipe["segments"][0]["type"] == "card"
-    assert recipe["segments"][0]["durationInFrames"] == 90
-    assert recipe["segments"][0]["title"] == "O segredo"
-    assert recipe["segments"][1]["type"] == "clip"
-    assert recipe["segments"][1]["inFrame"] == 0
-    assert recipe["segments"][1]["outFrame"] == 60
-    # legenda deslocada pelo card (0s -> frame 90)
-    assert recipe["captions"][0]["fromFrame"] == 90
+    # sem card: apenas um segmento clip
+    assert all(s["type"] != "card" for s in recipe["segments"])
+    assert len(recipe["segments"]) == 1
+    assert recipe["segments"][0]["type"] == "clip"
+    assert recipe["segments"][0]["inFrame"] == 0
+    assert recipe["segments"][0]["outFrame"] == 60
+    # legendas SEM offset de card: 0s -> frame 0
+    assert recipe["captions"][0]["fromFrame"] == 0
     assert recipe["captions"][0]["text"] == "ola pessoal"
-    # overlay lowerThird durante o card
-    assert recipe["overlays"][0]["type"] == "lowerThird"
+    # overlay de hook
+    hook_ov = recipe["overlays"][0]
+    assert hook_ov["type"] == "hook"
+    assert hook_ov["text"] == "O segredo"
+    assert hook_ov["fromFrame"] == 0
+    assert hook_ov["durationInFrames"] == 90
+    assert hook_ov["id"] == "ov_hook"
+    # subtítulo preenchido -> segundo overlay
+    subs = [o for o in recipe["overlays"][1:] if o["text"] == "em 60s"]
+    assert len(subs) == 1
+    assert subs[0]["type"] == "text"
     assert recipe["formats"]["vertical9x16"]["width"] == 1080
+
+
+def test_build_recipe_no_subtitle_overlay_when_empty():
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "T", "subtitle": "", "duration_frames": 60},
+        max_chars=99, max_gap=5.0,
+    )
+    assert len(recipe["overlays"]) == 1
+    assert recipe["overlays"][0]["type"] == "hook"
+    assert recipe["overlays"][0]["durationInFrames"] == 60
+
+
+def test_build_recipe_no_lowerthird():
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "T", "subtitle": "s", "duration_frames": 60},
+        max_chars=99, max_gap=5.0,
+    )
+    assert all(o["type"] != "lowerThird" for o in recipe["overlays"])
 
 
 def test_build_recipe_injects_caption_style_defaults():
