@@ -10,6 +10,8 @@ vi.mock("../api", () => ({
     // promise pendente: transcrição "em andamento" (busy=true) para ver a barra
     return new Promise<void>(() => {});
   }),
+  getJob: vi.fn(async () => ({ captionStyle: { fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" }, brandKitSlug: "" })),
+  putCaptionStyle: vi.fn(async () => {}),
 }));
 
 import { TranscriptStep } from "../steps/TranscriptStep";
@@ -23,5 +25,13 @@ describe("TranscriptStep progress", () => {
     await waitFor(() => {
       expect(screen.getByText(/50%/)).toBeInTheDocument();
     });
+  });
+
+  it("ajustar o tamanho da legenda chama putCaptionStyle", async () => {
+    const api = await import("../api");
+    render(<TranscriptStep {...props} />);
+    const size = await screen.findByLabelText(/tamanho da legenda/i);
+    fireEvent.change(size, { target: { value: "72" } });
+    await waitFor(() => expect((api.putCaptionStyle as any)).toHaveBeenCalled());
   });
 });

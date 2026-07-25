@@ -35,6 +35,20 @@ export async function putTranscript(slug: string, lines: CaptionLine[]): Promise
   }));
 }
 
+export async function putCaptionStyle(slug: string, style: any): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/caption-style`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(style),
+  }));
+}
+
+export async function putBrandKit(slug: string, kitSlug: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/brand-kit`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug: kitSlug }),
+  }));
+}
+
 export async function getHook(slug: string): Promise<Hook> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/hook`));
 }

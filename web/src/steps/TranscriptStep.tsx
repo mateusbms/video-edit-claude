@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getTranscript, putTranscript, streamSSE, mediaUrl } from "../api";
+import { getTranscript, putTranscript, streamSSE, mediaUrl, putCaptionStyle, getJob } from "../api";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { ProgressBar } from "../components/ProgressBar";
 import type { CaptionLine } from "../types";
@@ -14,10 +14,17 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
+  const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
+    getJob(slug).then((j: any) => { if (j?.captionStyle) setCapStyle(j.captionStyle); }).catch(() => {});
   }, [slug]);
+
+  const saveStyle = (nextStyle: typeof capStyle) => {
+    setCapStyle(nextStyle);
+    putCaptionStyle(slug, nextStyle).catch(() => {});
+  };
 
   const transcribe = async () => {
     setBusy(true); setErr(null); setStage("solicitado"); setProg(null);
@@ -83,7 +90,34 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
             onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
             className="w-full rounded border border-zinc-800"
           />
-          <CaptionOverlay lines={lines} currentTime={now} />
+          <CaptionOverlay lines={lines} currentTime={now} style={capStyle} />
+        </div>
+      )}
+      {lines && (
+        <div className="flex flex-wrap gap-4 items-end bg-zinc-900 border border-zinc-800 rounded p-3 text-sm">
+          <label className="flex flex-col gap-1">Tamanho da legenda
+            <input aria-label="tamanho da legenda" type="range" min={24} max={120} value={capStyle.fontSize}
+              onChange={(e) => saveStyle({ ...capStyle, fontSize: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">Posição (do rodapé)
+            <input aria-label="posição da legenda" type="range" min={0} max={600} value={capStyle.bottom}
+              onChange={(e) => saveStyle({ ...capStyle, bottom: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">Cor do texto
+            <input aria-label="cor do texto" type="color" value={capStyle.color || "#ffffff"}
+              onChange={(e) => saveStyle({ ...capStyle, color: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1">Destaque
+            <input aria-label="cor de destaque" type="color" value={capStyle.highlightColor || "#22c55e"}
+              onChange={(e) => saveStyle({ ...capStyle, highlightColor: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1">Fonte
+            <select aria-label="fonte da legenda" value={capStyle.fontFamily || "Inter"}
+              onChange={(e) => saveStyle({ ...capStyle, fontFamily: e.target.value })}
+              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1">
+              {["Inter", "Poppins", "Montserrat", "Roboto"].map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </label>
         </div>
       )}
       {lines && (
