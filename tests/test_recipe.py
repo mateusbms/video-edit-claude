@@ -73,6 +73,17 @@ def test_build_recipe_injects_caption_style_defaults():
     assert cs["fontFamily"] == "Poppins"
 
 
+def test_build_recipe_bottom_zero_is_preserved():
+    from pipeline.recipe import build_recipe
+    r = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[], hook={"title": "T", "subtitle": ""}, hook_card_frames=0,
+        caption_style={"fontSize": 48, "bottom": 0, "color": "", "highlightColor": "", "fontFamily": ""},
+        brand=None,
+    )
+    assert r["captionStyle"]["bottom"] == 0  # 0 legítimo não vira 120
+
+
 def test_build_recipe_caption_style_overrides_brand():
     from pipeline.recipe import build_recipe
     r = build_recipe(

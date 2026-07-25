@@ -77,8 +77,8 @@ def build_recipe(
     bcolors = (brand or {}).get("colors", {})
     bfonts = (brand or {}).get("fonts", {})
     resolved_caption_style = {
-        "fontSize": cs.get("fontSize") or 48,
-        "bottom": cs.get("bottom") or 120,
+        "fontSize": cs["fontSize"] if cs.get("fontSize") is not None else 48,
+        "bottom": cs["bottom"] if cs.get("bottom") is not None else 120,
         "color": cs.get("color") or bcolors.get("foreground") or "#ffffff",
         "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or "#22c55e",
         "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",

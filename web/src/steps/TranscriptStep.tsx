@@ -17,6 +17,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [now, setNow] = useState(0);
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
   const [brandSlug, setBrandSlug] = useState("");
+  const [previewScale, setPreviewScale] = useState(1);
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
@@ -25,6 +26,17 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.brandKitSlug) setBrandSlug(j.brandKitSlug);
     }).catch(() => {});
   }, [slug]);
+
+  // escala o preview: o estilo é em px do render (largura 1920); o vídeo do preview é menor.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(v);
+    return () => ro.disconnect();
+  }, [lines]);
 
   const saveStyle = (nextStyle: typeof capStyle) => {
     setCapStyle(nextStyle);
@@ -95,7 +107,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
             onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
             className="w-full rounded border border-zinc-800"
           />
-          <CaptionOverlay lines={lines} currentTime={now} style={capStyle} />
+          <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         </div>
       )}
       {lines && (
