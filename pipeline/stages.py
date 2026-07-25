@@ -47,6 +47,10 @@ def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
     write_json(job.dir / "trimmed.probe.json",
                {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
+    # o trimmed mudou: invalida artefatos derivados para não renderizar legendas
+    # dessincronizadas se o usuário refinar depois de transcrever.
+    for stale in ("transcript.json", "edit-recipe.json"):
+        (job.dir / stale).unlink(missing_ok=True)
     return tmeta.duration
 
 

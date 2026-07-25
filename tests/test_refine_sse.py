@@ -37,6 +37,10 @@ def test_refine_streams_and_shortens(tmp_path, monkeypatch):
             pass
     before = json.loads((tmp_path / "jobs" / "r1" / "trimmed.probe.json").read_text())["duration"]
 
+    # transcrição obsoleta deve ser invalidada pelo refino
+    stale_transcript = tmp_path / "jobs" / "r1" / "transcript.json"
+    stale_transcript.write_text("[]")
+
     with client.stream("POST", "/api/jobs/r1/refine",
                        json={"remove": [{"start": 1.0, "end": 2.0}]}) as r:
         events, datas = [], []
@@ -49,3 +53,4 @@ def test_refine_streams_and_shortens(tmp_path, monkeypatch):
     assert "done" in events
     new_dur = json.loads(datas[-1])["trimmed_duration"]
     assert new_dur < before
+    assert not stale_transcript.exists()

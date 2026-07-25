@@ -55,10 +55,11 @@ def compute_kept_segments(
 
 def invert_ranges(remove: list[Segment], duration: float) -> list[Segment]:
     """Trechos a MANTER = complemento de `remove` sobre [0, duration]."""
-    rs = sorted(
-        (Segment(max(0.0, r.start), min(duration, r.end)) for r in remove if r.end > r.start),
-        key=lambda s: s.start,
-    )
+    clamped = [
+        Segment(max(0.0, min(duration, r.start)), max(0.0, min(duration, r.end)))
+        for r in remove
+    ]
+    rs = sorted((s for s in clamped if s.end > s.start), key=lambda s: s.start)
     keep: list[Segment] = []
     cursor = 0.0
     for r in rs:

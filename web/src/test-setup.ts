@@ -19,4 +19,7 @@ Object.defineProperty(globalThis, "localStorage", {
 
 // Sem globals:true, o React Testing Library não registra cleanup automático;
 // sem isto, renders de testes anteriores vazam no document.body.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});

@@ -77,6 +77,12 @@ def test_invert_ranges_edge():
     assert [(s.start, s.end) for s in keep] == [(1.0, 3.0)]
 
 
+def test_invert_ranges_beyond_duration_keeps_all():
+    # trecho inteiramente além da duração: descartado, mantém o clipe inteiro
+    keep = invert_ranges([Segment(5.0, 10.0)], 3.0)
+    assert [(s.start, s.end) for s in keep] == [(0.0, 3.0)]
+
+
 @_needs_ffmpeg
 def test_detect_silences_finds_gap(tmp_path):
     clip = tmp_path / "c.mp4"
