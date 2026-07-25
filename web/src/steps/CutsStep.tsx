@@ -15,6 +15,42 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [removeList, setRemoveList] = useState<{ start: number; end: number }[]>([]);
+  const [markStart, setMarkStart] = useState<number | null>(null);
+  const [refineVersion, setRefineVersion] = useState(0);
+  const [refining, setRefining] = useState(false);
+  const [refineProg, setRefineProg] = useState<{ n: number; total: number } | null>(null);
+
+  const curTime = () => videoRef.current?.currentTime ?? 0;
+  const onMarkStart = () => setMarkStart(curTime());
+  const onMarkEnd = () => {
+    const end = curTime();
+    if (markStart != null && end > markStart) {
+      setRemoveList((l) => [...l, { start: markStart, end }].sort((a, b) => a.start - b.start));
+      setMarkStart(null);
+    }
+  };
+  const removeRange = (i: number) => setRemoveList((l) => l.filter((_, k) => k !== i));
+
+  const applyRefine = async () => {
+    if (removeList.length === 0) return;
+    setRefining(true); setErr(null); setRefineProg(null);
+    try {
+      await streamSSE(`/api/jobs/${slug}/refine`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remove: removeList }),
+      }, {
+        progress: (d) => { if (d.n != null && d.total != null) setRefineProg({ n: d.n, total: d.total }); },
+        done: (d) => {
+          setResult((r) => (r && d.trimmed_duration != null ? { ...r, trimmed_duration: d.trimmed_duration } : r));
+          setRemoveList([]);
+          setRefineVersion((v) => v + 1);
+        },
+        error: (d) => setErr(d.detail ?? "erro ao aplicar cortes"),
+      });
+    } catch (e: any) { setErr(e.message); }
+    finally { setRefining(false); setRefineProg(null); }
+  };
 
   const seek = (t: number) => {
     const v = videoRef.current;
@@ -92,8 +128,42 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
               return parts;
             })()}
           </div>
-          <video ref={videoRef} src={mediaUrl(slug, "trimmed.mp4")} controls
+          <video ref={videoRef} src={`${mediaUrl(slug, "trimmed.mp4")}${refineVersion ? `?v=${refineVersion}` : ""}`} controls
             className="w-full rounded border border-zinc-800 mt-2" />
+          <div className="border-t border-zinc-800 pt-3 mt-3 space-y-2">
+            <p className="font-medium">Cortes manuais (opcional)</p>
+            <p className="text-zinc-400 text-xs">Dê play no vídeo, marque o início e o fim dos trechos a remover.</p>
+            <div className="flex gap-2 items-center flex-wrap">
+              <button onClick={onMarkStart} className="px-3 py-1 bg-zinc-800 rounded">Marcar início</button>
+              <button onClick={onMarkEnd} disabled={markStart == null} className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">Marcar fim</button>
+              {markStart != null && <span className="text-xs text-zinc-400">início em {formatSeconds(markStart)}…</span>}
+            </div>
+            {removeList.length > 0 && (
+              <>
+                <ol className="space-y-1 text-sm">
+                  {removeList.map((r, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="text-zinc-500">{i + 1}.</span>
+                      <span className="flex-1">{formatSeconds(r.start)} – {formatSeconds(r.end)}</span>
+                      <button aria-label={`remover trecho ${i + 1}`} onClick={() => removeRange(i)} className="text-red-400 px-2">×</button>
+                    </li>
+                  ))}
+                </ol>
+                <div className="h-2 bg-zinc-800 rounded overflow-hidden relative">
+                  {removeList.map((r, i) => {
+                    const dur = result.trimmed_duration || 1;
+                    return <div key={i} className="absolute h-full bg-red-500"
+                      style={{ left: `${(r.start / dur) * 100}%`, width: `${((r.end - r.start) / dur) * 100}%` }} />;
+                  })}
+                </div>
+                <button onClick={applyRefine} disabled={refining}
+                  className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
+                  {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
+                </button>
+                {refining && refineProg && <ProgressBar label="Aplicando cortes" n={Math.round(refineProg.n)} total={Math.round(refineProg.total)} />}
+              </>
+            )}
+          </div>
         </div>
       )}
       <div className="pt-4 flex justify-between">
