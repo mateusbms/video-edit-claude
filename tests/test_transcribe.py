@@ -1,3 +1,5 @@
+import sys
+import types
 from types import SimpleNamespace
 from pipeline.transcribe import words_from_segments
 
@@ -18,10 +20,6 @@ def test_words_from_segments_flattens_words():
         {"word": "Olá", "start": 0.0, "end": 0.4},
         {"word": "mundo", "start": 0.4, "end": 1.0},
     ]
-
-
-import sys
-import types
 
 
 def test_model_is_cached_and_uses_fast_params(monkeypatch):
@@ -64,3 +62,29 @@ def test_transcribe_default_model_is_base(monkeypatch):
     monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeModel))
     T.transcribe_audio("a.wav")
     assert sizes == ["base"]
+
+
+def test_transcribe_reports_progress(monkeypatch):
+    from pipeline import transcribe as T
+    T._MODEL_CACHE.clear()
+
+    seg1 = SimpleNamespace(text="a", start=0.0, end=1.0,
+                           words=[SimpleNamespace(word="a", start=0.0, end=1.0)])
+    seg2 = SimpleNamespace(text="b", start=1.0, end=2.0,
+                           words=[SimpleNamespace(word="b", start=1.0, end=2.0)])
+
+    class FakeModel:
+        def __init__(self, *a, **k):
+            pass
+
+        def transcribe(self, path, **kwargs):
+            return ([seg1, seg2], SimpleNamespace(duration=2.0))
+
+    monkeypatch.setitem(sys.modules, "faster_whisper",
+                        types.SimpleNamespace(WhisperModel=FakeModel))
+
+    calls = []
+    out = T.transcribe_audio("x.wav", progress_cb=lambda n, total: calls.append((n, total)))
+
+    assert out[0]["text"] == "a" and out[1]["text"] == "b"
+    assert calls == [(1.0, 2.0), (2.0, 2.0)]

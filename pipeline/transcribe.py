@@ -28,10 +28,19 @@ def _get_model(model_size: str):
         return _MODEL_CACHE[model_size]
 
 
-def transcribe_audio(path: str, model_size: str = "base", language: str = "pt") -> list[dict]:
+def transcribe_audio(path: str, model_size: str = "base", language: str = "pt",
+                     progress_cb=None) -> list[dict]:
     model = _get_model(model_size)
-    segments, _info = model.transcribe(
+    segments, info = model.transcribe(
         path, language=language, word_timestamps=True,
         vad_filter=True, beam_size=1,
     )
-    return words_from_segments(segments)
+    total = float(getattr(info, "duration", 0) or 0)
+
+    def _tracked(segs):
+        for seg in segs:
+            yield seg
+            if progress_cb and total:
+                progress_cb(min(seg.end, total), total)
+
+    return words_from_segments(_tracked(segments))

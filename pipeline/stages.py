@@ -32,9 +32,10 @@ def stage_cut(job: Job, progress_cb=None) -> None:
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
 
 
-def stage_transcribe(job: Job) -> None:
+def stage_transcribe(job: Job, progress_cb=None) -> None:
     trimmed = job.dir / "trimmed.mp4"
-    words = transcribe_audio(str(trimmed), job.config.whisper_model, job.config.language)
+    words = transcribe_audio(str(trimmed), job.config.whisper_model,
+                             job.config.language, progress_cb=progress_cb)
     write_json(job.dir / "transcript.json", words)
 
 
