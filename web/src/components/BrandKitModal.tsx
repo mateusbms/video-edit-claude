@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BrandKitSchema } from "../schemas/brandKit";
-import { createBrandKit, type BrandKit } from "../animatedApi";
+import { createBrandKit, updateBrandKit, type BrandKit } from "../animatedApi";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onCreated: (kit: BrandKit) => void;
+  editing?: BrandKit;
 };
 
 const FONT_OPTIONS = ["Inter", "Instrument Serif", "Roboto", "Arial"];
@@ -36,25 +37,40 @@ const COLOR_LABELS: { key: ColorKey; label: string; isText?: boolean }[] = [
   { key: "accentLight", label: "Accent Light", isText: true },
 ];
 
-export const BrandKitModal: React.FC<Props> = ({ open, onClose, onCreated }) => {
-  const [name, setName] = useState(DEFAULTS.name);
-  const [colors, setColors] = useState(DEFAULTS.colors);
-  const [fonts, setFonts] = useState(DEFAULTS.fonts);
+export const BrandKitModal: React.FC<Props> = ({ open, onClose, onCreated, editing }) => {
+  const [name, setName] = useState(editing?.name ?? DEFAULTS.name);
+  const [colors, setColors] = useState(editing?.colors ?? DEFAULTS.colors);
+  const [fonts, setFonts] = useState(editing?.fonts ?? DEFAULTS.fonts);
   const [logo, setLogo] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Re-seed the form whenever the modal opens, from `editing` if present
+  // (create-mode falls back to DEFAULTS). Avoids stale state carried over
+  // from a previous open (e.g. edit kit A, close, create a new one).
+  useEffect(() => {
+    if (!open) return;
+    setName(editing?.name ?? DEFAULTS.name);
+    setColors((editing?.colors as typeof DEFAULTS.colors) ?? DEFAULTS.colors);
+    setFonts((editing?.fonts as typeof DEFAULTS.fonts) ?? DEFAULTS.fonts);
+    setLogo(null);
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing?.slug]);
+
   if (!open) return null;
 
   const validation = BrandKitSchema.safeParse({ name, colors, fonts });
-  const isValid = validation.success && logo !== null && !submitting;
+  // Logo is required to create a kit, but optional when editing one that
+  // already has a logo on disk (PUT keeps the existing file if none sent).
+  const isValid = validation.success && (!!editing || logo !== null) && !submitting;
 
   const setColor = (key: ColorKey, value: string) =>
     setColors((prev) => ({ ...prev, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isValid || !logo) return;
+    if (!isValid) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -69,8 +85,8 @@ export const BrandKitModal: React.FC<Props> = ({ open, onClose, onCreated }) => 
       fd.append("colors_accentLight", colors.accentLight);
       fd.append("fonts_body", fonts.body);
       fd.append("fonts_headline", fonts.headline);
-      fd.append("logo", logo);
-      const kit = await createBrandKit(fd);
+      if (logo) fd.append("logo", logo);
+      const kit = editing ? await updateBrandKit(editing.slug, fd) : await createBrandKit(fd);
       onCreated(kit);
       onClose();
     } catch (err) {
@@ -96,7 +112,9 @@ export const BrandKitModal: React.FC<Props> = ({ open, onClose, onCreated }) => 
           color: "#f4f4f5",
         }}
       >
-        <h2 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 600 }}>Novo Brand Kit</h2>
+        <h2 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 600 }}>
+          {editing ? "Editar Brand Kit" : "Novo Brand Kit"}
+        </h2>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Name */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -181,7 +199,9 @@ export const BrandKitModal: React.FC<Props> = ({ open, onClose, onCreated }) => 
 
           {/* Logo */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label htmlFor="bk-logo" style={{ fontSize: 13, color: "#a1a1aa" }}>Logo</label>
+            <label htmlFor="bk-logo" style={{ fontSize: 13, color: "#a1a1aa" }}>
+              {editing ? "Logo (opcional — mantém a atual se não enviar)" : "Logo"}
+            </label>
             <input
               id="bk-logo"
               type="file"

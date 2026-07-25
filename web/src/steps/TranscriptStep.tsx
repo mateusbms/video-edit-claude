@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { getTranscript, putTranscript, streamSSE, mediaUrl, putCaptionStyle, getJob } from "../api";
+import { getTranscript, putTranscript, streamSSE, mediaUrl, putCaptionStyle, putBrandKit, getJob } from "../api";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { ProgressBar } from "../components/ProgressBar";
+import { BrandKitPicker } from "../components/BrandKitPicker";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
 
@@ -15,10 +16,14 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
+  const [brandSlug, setBrandSlug] = useState("");
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
-    getJob(slug).then((j: any) => { if (j?.captionStyle) setCapStyle(j.captionStyle); }).catch(() => {});
+    getJob(slug).then((j: any) => {
+      if (j?.captionStyle) setCapStyle(j.captionStyle);
+      if (j?.brandKitSlug) setBrandSlug(j.brandKitSlug);
+    }).catch(() => {});
   }, [slug]);
 
   const saveStyle = (nextStyle: typeof capStyle) => {
@@ -118,6 +123,18 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
               {["Inter", "Poppins", "Montserrat", "Roboto"].map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </label>
+        </div>
+      )}
+      {lines && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm space-y-2">
+          <h3 className="font-medium text-zinc-200">Marca</h3>
+          <BrandKitPicker
+            value={brandSlug}
+            onChange={(s) => {
+              setBrandSlug(s);
+              putBrandKit(slug, s).catch(() => {});
+            }}
+          />
         </div>
       )}
       {lines && (

@@ -12,6 +12,13 @@ vi.mock("../api", () => ({
   }),
   getJob: vi.fn(async () => ({ captionStyle: { fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" }, brandKitSlug: "" })),
   putCaptionStyle: vi.fn(async () => {}),
+  putBrandKit: vi.fn(async () => {}),
+}));
+
+vi.mock("../animatedApi", () => ({
+  listBrandKits: vi.fn(async () => ([])),
+  createBrandKit: vi.fn(),
+  updateBrandKit: vi.fn(),
 }));
 
 import { TranscriptStep } from "../steps/TranscriptStep";
