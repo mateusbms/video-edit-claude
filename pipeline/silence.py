@@ -67,6 +67,17 @@ def detect_silences(path: str, noise_db: float = -30.0, min_silence: float = 0.5
     return parse_silences(result.stderr)
 
 
+def parse_ffmpeg_progress(line: str) -> float | None:
+    """Segundos processados a partir de uma linha `out_time_us=` do -progress do ffmpeg."""
+    line = line.strip()
+    if line.startswith("out_time_us="):
+        try:
+            return int(line.split("=", 1)[1]) / 1_000_000
+        except ValueError:
+            return None
+    return None
+
+
 def cut_segments(src: str, segments: list[Segment], out_path: str) -> None:
     if not segments:
         raise ValueError("nenhum segmento para cortar")
