@@ -33,7 +33,7 @@ export const Timeline: React.FC<{ recipe: TEditRecipe; captionFontSize: number; 
           </Sequence>
         );
       })}
-      <CaptionLayer captions={recipe.captions} fontSize={captionFontSize} bottom={captionBottom} />
+      <CaptionLayer captions={recipe.captions} style={recipe.captionStyle} />
       <OverlayLayer overlays={recipe.overlays} />
     </AbsoluteFill>
   );

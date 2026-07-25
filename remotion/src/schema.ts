@@ -48,6 +48,14 @@ export const zOverlay = z.object({
 
 export const zFormat = z.object({ width: z.number(), height: z.number() });
 
+export const zCaptionStyle = z.object({
+  fontSize: z.number(),
+  bottom: z.number(),
+  color: z.string(),
+  highlightColor: z.string(),
+  fontFamily: z.string(),
+});
+
 export const zEditRecipe = z.object({
   fps: z.number(),
   source: z.object({
@@ -59,12 +67,14 @@ export const zEditRecipe = z.object({
   captions: z.array(zCaption),
   overlays: z.array(zOverlay),
   formats: z.object({ main16x9: zFormat, vertical9x16: zFormat }),
+  captionStyle: zCaptionStyle.optional(),
 });
 
 export type TEditRecipe = z.infer<typeof zEditRecipe>;
 export type TSegment = z.infer<typeof zSegment>;
 export type TCaption = z.infer<typeof zCaption>;
 export type TOverlay = z.infer<typeof zOverlay>;
+export type TCaptionStyle = z.infer<typeof zCaptionStyle>;
 
 export const AnimatedRecipeSchema = z.object({
   recipeVersion: z.literal(1),
