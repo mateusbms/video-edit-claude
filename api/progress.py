@@ -8,7 +8,7 @@ async def run_with_progress(blocking_fn: Callable[[Callable[[float, float], None
     """Roda blocking_fn(progress_cb) numa thread, emitindo eventos SSE.
     progress_cb(n, total) -> evento 'progress'. Retorno de blocking_fn -> 'done'.
     Exceção -> 'error'."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
 
     def progress_cb(n: float, total: float) -> None:
