@@ -32,15 +32,24 @@ def test_get_job_state_after_upload(client, sample_mp4):
 
 def test_cut_after_ingest(client, sample_mp4):
     _upload(client, sample_mp4, "t3")
-    r = client.post(
-        "/api/jobs/t3/cut",
+    import json
+    with client.stream(
+        "POST", "/api/jobs/t3/cut",
         json={"silence_threshold_db": -30.0, "padding": 0.05, "min_silence": 0.3},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["original_duration"] > 0
-    assert body["trimmed_duration"] >= 0
-    assert isinstance(body["segments"], list)
+    ) as r:
+        assert r.status_code == 200
+        last_data = None
+        got_done = False
+        for line in r.iter_lines():
+            if line.startswith("event:") and line.split(":", 1)[1].strip() == "done":
+                got_done = True
+            elif line.startswith("data:"):
+                last_data = line.split(":", 1)[1].strip()
+        assert got_done
+        done = json.loads(last_data)
+    assert done["original_duration"] > 0
+    assert done["trimmed_duration"] >= 0
+    assert isinstance(done["segments"], list)
 
 
 def test_put_and_get_transcript(client, sample_mp4):

@@ -12,6 +12,7 @@ from api.jobs import (
     update_config, update_hook_card_frames, update_whisper_model,
 )
 from api.models import CutParams, CutResult, CutSegmentOut, Hook, RenderParams, TranscribeParams
+from api.progress import run_with_progress
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_transcribe
@@ -65,18 +66,19 @@ def run_cut(slug: str, params: CutParams):
     jobs_root, *_ = _roots()
     update_config(slug, jobs_root, params)
     job = init_job(jobs_root, slug)
-    try:
-        stage_cut(job)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"cut falhou: {e}")
-    cuts = load_json(job.dir / "cuts.json")
-    probe = load_json(job.dir / "probe.json")
-    tprobe = load_json(job.dir / "trimmed.probe.json")
-    return CutResult(
-        original_duration=probe["duration"],
-        trimmed_duration=tprobe["duration"],
-        segments=[CutSegmentOut(**c) for c in cuts],
-    ).model_dump()
+
+    def work(progress_cb):
+        stage_cut(job, progress_cb=progress_cb)
+        cuts = load_json(job.dir / "cuts.json")
+        probe = load_json(job.dir / "probe.json")
+        tprobe = load_json(job.dir / "trimmed.probe.json")
+        return CutResult(
+            original_duration=probe["duration"],
+            trimmed_duration=tprobe["duration"],
+            segments=[CutSegmentOut(**c) for c in cuts],
+        ).model_dump()
+
+    return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
 
 
 @router.get("/jobs/{slug}/transcript")
@@ -169,20 +171,19 @@ def _build_remotion_env() -> dict:
 
 
 @router.post("/jobs/{slug}/transcribe")
-async def run_transcribe(slug: str, params: TranscribeParams):
+def run_transcribe(slug: str, params: TranscribeParams):
     jobs_root, *_ = _roots()
     update_whisper_model(slug, jobs_root, params.model_size, params.language)
     job = init_job(jobs_root, slug)
 
+    def work(progress_cb):
+        stage_transcribe(job, progress_cb=progress_cb)
+        return {"ok": True}
+
     async def gen():
         yield sse_event("progress", {"stage": "loading_model"})
-        loop = asyncio.get_event_loop()
-        try:
-            await loop.run_in_executor(None, stage_transcribe, job)
-        except Exception as e:
-            yield sse_event("error", {"detail": str(e)})
-            return
-        yield sse_event("done", {"ok": True})
+        async for chunk in run_with_progress(work):
+            yield chunk
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -214,7 +215,7 @@ async def run_render(slug: str, params: RenderParams | None = None):
 
     selected = (params.formats if params else None) or ["main16x9", "vertical9x16"]
     jobs_to_run = [
-        (FORMAT_MAP[f][0], f"{slug}-{FORMAT_MAP[f][1]}.mp4")
+        (f, FORMAT_MAP[f][0], f"{slug}-{FORMAT_MAP[f][1]}.mp4")
         for f in selected if f in FORMAT_MAP
     ]
     if not jobs_to_run:
@@ -226,10 +227,10 @@ async def run_render(slug: str, params: RenderParams | None = None):
 
     async def gen():
         from collections import deque
-        for fmt, out_name in jobs_to_run:
+        for fmt_key, composition, out_name in jobs_to_run:
             out_path = output_root_abs / out_name
             try:
-                proc = await render_mod.run_remotion(fmt, out_path, props_path, remotion_dir, env)
+                proc = await render_mod.run_remotion(composition, out_path, props_path, remotion_dir, env)
             except Exception as e:
                 yield sse_event("error", {"detail": str(e)})
                 return
@@ -245,18 +246,18 @@ async def run_render(slug: str, params: RenderParams | None = None):
                 if p:
                     kind, n, total = p
                     yield sse_event("progress",
-                                    {"format": fmt, "kind": kind, "n": n, "total": total})
+                                    {"format": fmt_key, "kind": kind, "n": n, "total": total})
                 else:
                     tail.append(line)
             rc = await proc.wait()
             if rc != 0:
                 yield sse_event("error", {
-                    "detail": f"render {fmt} retornou {rc}",
+                    "detail": f"render {fmt_key} retornou {rc}",
                     "log": "\n".join(tail),
                 })
                 return
             yield sse_event("progress",
-                            {"format": fmt, "kind": "encoded", "n": 1, "total": 1, "done_format": True})
+                            {"format": fmt_key, "kind": "encoded", "n": 1, "total": 1, "done_format": True})
         yield sse_event("done", {"ok": True})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
