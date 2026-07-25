@@ -11,11 +11,12 @@ from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
     update_config, update_hook_card_frames, update_whisper_model,
 )
-from api.models import CutParams, CutResult, CutSegmentOut, Hook, RenderParams, TranscribeParams
+from api.models import CutParams, CutResult, CutSegmentOut, Hook, RefineParams, RenderParams, TranscribeParams
 from api.progress import run_with_progress
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
-from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_transcribe
+from pipeline.silence import Segment
+from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_refine, stage_transcribe
 
 router = APIRouter(prefix="/api")
 
@@ -77,6 +78,21 @@ def run_cut(slug: str, params: CutParams):
             trimmed_duration=tprobe["duration"],
             segments=[CutSegmentOut(**c) for c in cuts],
         ).model_dump()
+
+    return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
+
+
+@router.post("/jobs/{slug}/refine")
+def run_refine(slug: str, params: RefineParams):
+    jobs_root, *_ = _roots()
+    job = init_job(jobs_root, slug)
+    remove = [Segment(r.start, r.end) for r in params.remove]
+    if not remove:
+        raise HTTPException(status_code=400, detail="nenhum trecho para remover")
+
+    def work(progress_cb):
+        new_dur = stage_refine(job, remove, progress_cb=progress_cb)
+        return {"trimmed_duration": new_dur}
 
     return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
 

@@ -56,6 +56,10 @@ class CutResult(BaseModel):
     segments: list[CutSegmentOut]
 
 
+class RefineParams(BaseModel):
+    remove: list[CutSegmentOut] = Field(default_factory=list)
+
+
 class RenderParams(BaseModel):
     formats: list[RenderFormat] = Field(default_factory=lambda: ["main16x9", "vertical9x16"])
 

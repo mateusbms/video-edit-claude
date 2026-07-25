@@ -2,7 +2,7 @@ from pathlib import Path
 
 from pipeline.job import Job, write_json, load_json
 from pipeline.probe import probe_video
-from pipeline.silence import detect_silences, compute_kept_segments, cut_segments
+from pipeline.silence import detect_silences, compute_kept_segments, cut_segments, invert_ranges
 from pipeline.transcribe import transcribe_audio
 from pipeline.recipe import build_recipe
 from pipeline.concat import concat_videos
@@ -30,6 +30,24 @@ def stage_cut(job: Job, progress_cb=None) -> None:
     write_json(job.dir / "trimmed.probe.json",
                {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
+
+
+def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
+    trimmed = job.dir / "trimmed.mp4"
+    tp = load_json(job.dir / "trimmed.probe.json")
+    dur = tp["duration"]
+    keep = invert_ranges(remove_ranges, dur)
+    if not keep:
+        raise ValueError("nada sobraria após os cortes manuais")
+    tmp = job.dir / "trimmed.refined.mp4"
+    total = sum(s.duration for s in keep)
+    cut_segments(str(trimmed), keep, str(tmp), total_duration=total, progress_cb=progress_cb)
+    tmp.replace(trimmed)
+    tmeta = probe_video(str(trimmed))
+    write_json(job.dir / "trimmed.probe.json",
+               {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,
+                "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
+    return tmeta.duration
 
 
 def stage_transcribe(job: Job, progress_cb=None) -> None:

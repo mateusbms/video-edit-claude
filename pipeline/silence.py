@@ -53,6 +53,23 @@ def compute_kept_segments(
     return [s for s in merged if s.duration >= min_segment]
 
 
+def invert_ranges(remove: list[Segment], duration: float) -> list[Segment]:
+    """Trechos a MANTER = complemento de `remove` sobre [0, duration]."""
+    rs = sorted(
+        (Segment(max(0.0, r.start), min(duration, r.end)) for r in remove if r.end > r.start),
+        key=lambda s: s.start,
+    )
+    keep: list[Segment] = []
+    cursor = 0.0
+    for r in rs:
+        if r.start > cursor:
+            keep.append(Segment(cursor, r.start))
+        cursor = max(cursor, r.end)
+    if cursor < duration:
+        keep.append(Segment(cursor, duration))
+    return keep
+
+
 def build_select_expr(segments: list[Segment]) -> str:
     return "+".join(f"between(t,{s.start:.3f},{s.end:.3f})" for s in segments)
 

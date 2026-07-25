@@ -3,7 +3,14 @@ import shutil
 import subprocess
 from pathlib import Path
 import pytest
-from pipeline.silence import parse_silences, compute_kept_segments, Segment, build_select_expr, detect_silences
+from pipeline.silence import (
+    parse_silences,
+    compute_kept_segments,
+    Segment,
+    build_select_expr,
+    detect_silences,
+    invert_ranges,
+)
 from pipeline.job import init_job, write_json
 from pipeline.stages import stage_cut
 from pipeline.probe import probe_video
@@ -48,6 +55,26 @@ def test_compute_kept_segments_drops_tiny_segments():
 def test_build_select_expr_joins_segments():
     expr = build_select_expr([Segment(0.0, 2.0), Segment(3.5, 10.0)])
     assert expr == "between(t,0.000,2.000)+between(t,3.500,10.000)"
+
+
+def test_invert_ranges_middle():
+    keep = invert_ranges([Segment(1.0, 2.0)], 3.0)
+    assert [(s.start, s.end) for s in keep] == [(0.0, 1.0), (2.0, 3.0)]
+
+
+def test_invert_ranges_empty_keeps_all():
+    keep = invert_ranges([], 3.0)
+    assert [(s.start, s.end) for s in keep] == [(0.0, 3.0)]
+
+
+def test_invert_ranges_overlap_merged():
+    keep = invert_ranges([Segment(1.0, 2.0), Segment(1.5, 2.5)], 3.0)
+    assert [(s.start, s.end) for s in keep] == [(0.0, 1.0), (2.5, 3.0)]
+
+
+def test_invert_ranges_edge():
+    keep = invert_ranges([Segment(0.0, 1.0)], 3.0)
+    assert [(s.start, s.end) for s in keep] == [(1.0, 3.0)]
 
 
 @_needs_ffmpeg
