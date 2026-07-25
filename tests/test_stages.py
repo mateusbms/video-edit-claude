@@ -34,8 +34,12 @@ def test_stage_recipe_writes_edit_recipe(tmp_path):
     stage_recipe(job)
 
     recipe = load_json(job.dir / "edit-recipe.json")
-    assert recipe["segments"][0]["title"] == "Hook"
-    assert recipe["captions"][0]["fromFrame"] == job.config.hook_card_frames
+    # Fase B: sem card; hook vira overlay animado sobre o vídeo, legendas sem offset
+    assert all(s["type"] != "card" for s in recipe["segments"])
+    assert recipe["segments"][0]["type"] == "clip"
+    assert recipe["captions"][0]["fromFrame"] == 0
+    assert recipe["overlays"][0]["type"] == "hook"
+    assert recipe["overlays"][0]["text"] == "Hook"
 
 
 @_needs_ffmpeg
