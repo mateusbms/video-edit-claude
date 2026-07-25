@@ -39,11 +39,25 @@ export const zSegment = z.discriminatedUnion("type", [
   zSceneSegment,
 ]);
 
+export const zOverlayAnim = z.enum(["fade", "slide-up", "slide-down", "pop", "none"]);
+
 export const zOverlay = z.object({
-  type: z.string(),
+  id: z.string().default(""), // estável p/ edição/react keys; "" só em overlays legados
+  type: z.string().default("text"), // "text" | "hook" | "lowerThird" (legado)
+  text: z.string(),
   fromFrame: z.number(),
   durationInFrames: z.number(),
-  text: z.string(),
+  x: z.number().default(0.5),
+  y: z.number().default(0.18),
+  anchor: z.enum(["center", "left", "right"]).default("center"),
+  fontSize: z.number().default(64),
+  color: z.string().default(""), // "" => usa theme.colors.foreground
+  highlightColor: z.string().default(""),
+  fontFamily: z.string().default(""), // "" => usa theme.fonts.heading
+  enter: zOverlayAnim.default("slide-up"),
+  exit: zOverlayAnim.default("fade"),
+  enterDurationInFrames: z.number().default(12),
+  exitDurationInFrames: z.number().default(12),
 });
 
 export const zFormat = z.object({ width: z.number(), height: z.number() });
