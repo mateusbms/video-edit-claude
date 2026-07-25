@@ -1,5 +1,5 @@
 import type {
-  CutParams, CutResult, Hook, JobState, CaptionLine, SSEEvent,
+  Hook, JobState, CaptionLine, SSEEvent,
 } from "./types";
 
 const BASE = "/api";
@@ -22,13 +22,6 @@ export async function uploadJob(files: File[], slug: string): Promise<{ slug: st
 
 export async function getJob(slug: string): Promise<JobState> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}`));
-}
-
-export async function runCut(slug: string, params: CutParams): Promise<CutResult> {
-  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/cut`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  }));
 }
 
 export async function getTranscript(slug: string): Promise<CaptionLine[]> {

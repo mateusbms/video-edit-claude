@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { runCut, mediaUrl } from "../api";
+import { streamSSE, mediaUrl } from "../api";
 import { Slider } from "../components/Slider";
+import { ProgressBar } from "../components/ProgressBar";
 import { formatSeconds, percentage } from "../util";
 import type { CutResult, CutParams } from "../types";
 import type { StepProps } from "../App";
@@ -10,9 +11,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
     silence_threshold_db: -30, padding: 0.1, min_silence: 0.5,
   });
   const [result, setResult] = useState<CutResult | null>(null);
+  const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
   const seek = (t: number) => {
     const v = videoRef.current;
     if (!v) return;
@@ -21,9 +24,17 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
 
   const onCut = async () => {
-    setBusy(true); setErr(null);
-    try { setResult(await runCut(slug, params)); }
-    catch (e: any) { setErr(e.message); }
+    setBusy(true); setErr(null); setResult(null); setProg(null);
+    try {
+      await streamSSE(`/api/jobs/${slug}/cut`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      }, {
+        progress: (d) => { if (d.n != null && d.total != null) setProg({ n: d.n, total: d.total }); },
+        done: (d) => setResult(d as CutResult),
+        error: (d) => setErr(d.detail ?? "erro no corte"),
+      });
+    } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   };
 
@@ -43,8 +54,9 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         onChange={(n) => setParams({ ...params, min_silence: n })} />
       <button onClick={onCut} disabled={busy}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
-        {busy ? "Detectando..." : "Detectar pausas"}
+        {busy ? "Cortando..." : "Detectar pausas"}
       </button>
+      {busy && prog && <ProgressBar label="Corte" n={Math.round(prog.n)} total={Math.round(prog.total)} />}
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {result && (
         <div className="bg-zinc-900 border border-zinc-800 rounded p-4 text-sm space-y-2">
@@ -60,7 +72,6 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
             {(() => {
               const total = result.original_duration;
               let cursor = 0;
-              // tempo acumulado no vídeo JÁ CORTADO (trimmed.mp4 é contíguo/zero-based)
               let trimmedCursor = 0;
               const parts: React.ReactElement[] = [];
               result.segments.forEach((s, i) => {
@@ -69,13 +80,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                 }
                 const trimmedStart = trimmedCursor;
                 parts.push(
-                  <div
-                    key={`s${i}`}
-                    onClick={() => seek(trimmedStart)}
+                  <div key={`s${i}`} onClick={() => seek(trimmedStart)}
                     title={`Ir para ${formatSeconds(trimmedStart)}`}
                     style={{ width: `${((s.end - s.start) / total) * 100}%`, cursor: "pointer" }}
-                    className="bg-emerald-500"
-                  />
+                    className="bg-emerald-500" />
                 );
                 cursor = s.end;
                 trimmedCursor += s.end - s.start;
@@ -84,12 +92,8 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
               return parts;
             })()}
           </div>
-          <video
-            ref={videoRef}
-            src={mediaUrl(slug, "trimmed.mp4")}
-            controls
-            className="w-full rounded border border-zinc-800 mt-2"
-          />
+          <video ref={videoRef} src={mediaUrl(slug, "trimmed.mp4")} controls
+            className="w-full rounded border border-zinc-800 mt-2" />
         </div>
       )}
       <div className="pt-4 flex justify-between">
