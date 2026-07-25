@@ -83,8 +83,8 @@ export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
         </div>
       )}
       <div className="space-y-3">
-        {prog["Main16x9"] && <ProgressBar label="16:9" n={prog["Main16x9"].n} total={prog["Main16x9"].total} />}
-        {prog["Vertical9x16"] && <ProgressBar label="9:16" n={prog["Vertical9x16"].n} total={prog["Vertical9x16"].total} />}
+        {prog["main16x9"] && <ProgressBar label="16:9" n={prog["main16x9"].n} total={prog["main16x9"].total} />}
+        {prog["vertical9x16"] && <ProgressBar label="9:16" n={prog["vertical9x16"].n} total={prog["vertical9x16"].total} />}
       </div>
       {done && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
