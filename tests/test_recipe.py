@@ -85,6 +85,17 @@ def test_build_recipe_no_lowerthird():
     assert all(o["type"] != "lowerThird" for o in recipe["overlays"])
 
 
+def test_build_recipe_hook_duration_floored_when_nonpositive():
+    # duration_frames 0/negativo/ausente não pode sumir com o overlay de hook
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "T", "subtitle": "", "duration_frames": 0},
+        max_chars=99, max_gap=5.0,
+    )
+    assert recipe["overlays"][0]["durationInFrames"] >= 1
+
+
 def test_build_recipe_injects_caption_style_defaults():
     from pipeline.recipe import build_recipe
     r = build_recipe(

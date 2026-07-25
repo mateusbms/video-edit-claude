@@ -84,7 +84,8 @@ def build_recipe(
         "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
     }
 
-    duration_frames = hook.get("duration_frames", 90)
+    # piso defensivo: 0/negativo/ausente não podem sumir com o overlay de hook
+    duration_frames = max(1, hook.get("duration_frames") or 90)
     hook_overlays = [
         {
             "id": "ov_hook",

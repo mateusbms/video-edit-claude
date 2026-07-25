@@ -4,17 +4,18 @@ export const sampleRecipe: TEditRecipe = {
   fps: 30,
   source: { width: 1280, height: 720, trimmedFrames: 180 },
   segments: [
-    { type: "card", durationInFrames: 90, title: "O segredo", subtitle: "em 60s" },
+    // Fase B: sem card — a composição de produção começa no clip em frame 0
+    // e o hook é overlay animado sobre ele (ver overlays abaixo).
     { type: "clip", source: "trimmed.mp4", inFrame: 0, outFrame: 180, reframe: { focusX: 0.5 } },
   ],
   captions: [
     {
-      fromFrame: 90,
+      fromFrame: 0,
       durationInFrames: 30,
       text: "ola pessoal",
       words: [
-        { word: "ola", fromFrame: 90, durationInFrames: 15 },
-        { word: "pessoal", fromFrame: 105, durationInFrames: 15 },
+        { word: "ola", fromFrame: 0, durationInFrames: 15 },
+        { word: "pessoal", fromFrame: 15, durationInFrames: 15 },
       ],
     },
   ],
