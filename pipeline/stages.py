@@ -83,5 +83,13 @@ def stage_recipe(job: Job) -> None:
         hook=hook, hook_card_frames=job.config.hook_card_frames,
         max_chars=job.config.max_caption_chars, max_gap=job.config.max_caption_gap,
         trimmed_frames_actual=trimmed_frames_actual,
+        caption_style={
+            "fontSize": job.config.caption_font_size,
+            "bottom": job.config.caption_bottom,
+            "color": job.config.caption_color,
+            "highlightColor": job.config.caption_highlight,
+            "fontFamily": job.config.caption_font,
+        },
+        brand=None,
     )
     write_json(job.dir / "edit-recipe.json", recipe)

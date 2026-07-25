@@ -54,3 +54,33 @@ def test_build_recipe_offsets_captions_by_hook_card():
     # overlay lowerThird durante o card
     assert recipe["overlays"][0]["type"] == "lowerThird"
     assert recipe["formats"]["vertical9x16"]["width"] == 1080
+
+
+def test_build_recipe_injects_caption_style_defaults():
+    from pipeline.recipe import build_recipe
+    r = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[{"word": "a", "start": 0.0, "end": 0.5}],
+        hook={"title": "T", "subtitle": ""}, hook_card_frames=0,
+        caption_style={"fontSize": 60, "bottom": 200, "color": "", "highlightColor": "", "fontFamily": ""},
+        brand={"colors": {"foreground": "#111111", "accent": "#22c55e"}, "fonts": {"body": "Poppins"}},
+    )
+    cs = r["captionStyle"]
+    assert cs["fontSize"] == 60
+    assert cs["bottom"] == 200
+    assert cs["color"] == "#111111"
+    assert cs["highlightColor"] == "#22c55e"
+    assert cs["fontFamily"] == "Poppins"
+
+
+def test_build_recipe_caption_style_overrides_brand():
+    from pipeline.recipe import build_recipe
+    r = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[], hook={"title": "T", "subtitle": ""}, hook_card_frames=0,
+        caption_style={"fontSize": 48, "bottom": 120, "color": "#ff0000", "highlightColor": "#00ff00", "fontFamily": "Inter"},
+        brand={"colors": {"foreground": "#111", "accent": "#222"}, "fonts": {"body": "Roboto"}},
+    )
+    cs = r["captionStyle"]
+    assert cs["color"] == "#ff0000"
+    assert cs["fontFamily"] == "Inter"

@@ -14,6 +14,12 @@ class JobConfig:
     hook_card_frames: int = 90
     max_caption_chars: int = 24
     max_caption_gap: float = 0.6
+    brand_kit_slug: str = ""
+    caption_font_size: int = 48
+    caption_bottom: int = 120
+    caption_color: str = ""
+    caption_highlight: str = ""
+    caption_font: str = ""
 
 
 @dataclass

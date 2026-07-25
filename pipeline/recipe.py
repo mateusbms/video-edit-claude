@@ -40,6 +40,8 @@ def build_recipe(
     max_chars: int = 24,
     max_gap: float = 0.6,
     trimmed_frames_actual: int | None = None,
+    caption_style: dict | None = None,
+    brand: dict | None = None,
 ) -> dict:
     # Se temos nb_frames do ffprobe, usar diretamente — evita Remotion ler
     # além do fim do vídeo quando duration*fps > nb_frames real.
@@ -71,6 +73,17 @@ def build_recipe(
 
     orientation = "16x9" if width >= height else "9x16"
 
+    cs = caption_style or {}
+    bcolors = (brand or {}).get("colors", {})
+    bfonts = (brand or {}).get("fonts", {})
+    resolved_caption_style = {
+        "fontSize": cs.get("fontSize") or 48,
+        "bottom": cs.get("bottom") or 120,
+        "color": cs.get("color") or bcolors.get("foreground") or "#ffffff",
+        "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or "#22c55e",
+        "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
+    }
+
     return {
         "kind": "recorded",
         "orientation": orientation,
@@ -92,6 +105,7 @@ def build_recipe(
             },
         ],
         "captions": captions,
+        "captionStyle": resolved_caption_style,
         "overlays": [
             {
                 "type": "lowerThird",
