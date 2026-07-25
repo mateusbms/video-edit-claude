@@ -1,4 +1,5 @@
 import re
+from dataclasses import asdict
 from pathlib import Path
 
 from pipeline.job import init_job, load_json, write_json
@@ -16,16 +17,13 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
     if (job_dir / "probe.json").exists():
         d = load_json(job_dir / "probe.json")
         probe = ProbeOut(**d)
-    config = CutParams()
-    cfg_path = job_dir / "job.config.json"
-    if cfg_path.exists():
-        cfg = load_json(cfg_path)
-        config = CutParams(
-            silence_threshold_db=cfg.get("silence_threshold_db", -30.0),
-            padding=cfg.get("padding", 0.1),
-            min_silence=cfg.get("min_silence", 0.5),
-        )
-    return JobState(
+    job = init_job(jobs_root, slug)
+    config = CutParams(
+        silence_threshold_db=job.config.silence_threshold_db,
+        padding=job.config.padding,
+        min_silence=job.config.min_silence,
+    )
+    state = JobState(
         slug=slug,
         probe=probe,
         config=config,
@@ -36,6 +34,15 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_render_16x9=False,  # preenchido pelo caller com OUTPUT_ROOT
         has_render_9x16=False,
     )
+    state.captionStyle = {
+        "fontSize": job.config.caption_font_size,
+        "bottom": job.config.caption_bottom,
+        "color": job.config.caption_color,
+        "highlightColor": job.config.caption_highlight,
+        "fontFamily": job.config.caption_font,
+    }
+    state.brandKitSlug = job.config.brand_kit_slug
+    return state
 
 
 def update_config(slug: str, jobs_root: Path, params: CutParams) -> None:
@@ -61,6 +68,22 @@ def update_hook_card_frames(slug: str, jobs_root: Path, frames: int) -> None:
     cfg = load_json(cfg_path)
     cfg["hook_card_frames"] = frames
     write_json(cfg_path, cfg)
+
+
+def update_caption_style(slug: str, jobs_root: Path, style) -> None:
+    job = init_job(jobs_root, slug)
+    job.config.caption_font_size = style.fontSize
+    job.config.caption_bottom = style.bottom
+    job.config.caption_color = style.color
+    job.config.caption_highlight = style.highlightColor
+    job.config.caption_font = style.fontFamily
+    write_json(job.dir / "job.config.json", asdict(job.config))
+
+
+def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
+    job = init_job(jobs_root, slug)
+    job.config.brand_kit_slug = kit_slug
+    write_json(job.dir / "job.config.json", asdict(job.config))
 
 
 def suggest_hook(transcript: list[dict]) -> Hook:

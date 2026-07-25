@@ -9,9 +9,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from api import render as render_mod
 from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
-    update_config, update_hook_card_frames, update_whisper_model,
+    update_brand_kit, update_caption_style, update_config,
+    update_hook_card_frames, update_whisper_model,
 )
-from api.models import CutParams, CutResult, CutSegmentOut, Hook, RefineParams, RenderParams, TranscribeParams
+from api.models import (
+    CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
+    Hook, RefineParams, RenderParams, TranscribeParams,
+)
 from api.progress import run_with_progress
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
@@ -144,6 +148,20 @@ def put_hook(slug: str, hook: Hook):
         },
     )
     update_hook_card_frames(slug, jobs_root, hook.duration_frames)
+    return {"ok": True}
+
+
+@router.put("/jobs/{slug}/caption-style")
+def put_caption_style(slug: str, style: CaptionStyleParams):
+    jobs_root, *_ = _roots()
+    update_caption_style(slug, jobs_root, style)
+    return {"ok": True}
+
+
+@router.put("/jobs/{slug}/brand-kit")
+def put_brand_kit(slug: str, body: dict):
+    jobs_root, *_ = _roots()
+    update_brand_kit(slug, jobs_root, body.get("slug", ""))
     return {"ok": True}
 
 

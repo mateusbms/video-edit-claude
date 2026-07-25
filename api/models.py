@@ -64,6 +64,14 @@ class RenderParams(BaseModel):
     formats: list[RenderFormat] = Field(default_factory=lambda: ["main16x9", "vertical9x16"])
 
 
+class CaptionStyleParams(BaseModel):
+    fontSize: int = 48
+    bottom: int = 120
+    color: str = ""
+    highlightColor: str = ""
+    fontFamily: str = ""
+
+
 class JobState(BaseModel):
     slug: str
     probe: ProbeOut | None = None
@@ -74,6 +82,8 @@ class JobState(BaseModel):
     has_recipe: bool = False
     has_render_16x9: bool = False
     has_render_9x16: bool = False
+    captionStyle: dict | None = None
+    brandKitSlug: str = ""
 
 
 ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]

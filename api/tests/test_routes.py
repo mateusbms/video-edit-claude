@@ -115,3 +115,14 @@ def test_files_serves_trimmed_only(client, sample_mp4):
     assert r.headers["content-type"].startswith("video/")
     r2 = client.get("/api/jobs/t7/files/source.mp4")
     assert r2.status_code == 404
+
+
+def test_caption_style_persists(client, sample_mp4):
+    _upload(client, sample_mp4, "cs1")
+    r = client.put("/api/jobs/cs1/caption-style",
+                   json={"fontSize": 72, "bottom": 200, "color": "#ff0000",
+                         "highlightColor": "#00ff00", "fontFamily": "Poppins"})
+    assert r.status_code == 200
+    s = client.get("/api/jobs/cs1").json()
+    assert s["captionStyle"]["fontSize"] == 72
+    assert s["captionStyle"]["fontFamily"] == "Poppins"
