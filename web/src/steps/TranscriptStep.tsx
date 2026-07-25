@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getTranscript, putTranscript, streamSSE, mediaUrl } from "../api";
 import { CaptionOverlay } from "../components/CaptionOverlay";
+import { ProgressBar } from "../components/ProgressBar";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
 
@@ -10,6 +11,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [stage, setStage] = useState("");
   const [lines, setLines] = useState<CaptionLine[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
 
@@ -18,19 +20,22 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   }, [slug]);
 
   const transcribe = async () => {
-    setBusy(true); setErr(null); setStage("solicitado");
+    setBusy(true); setErr(null); setStage("solicitado"); setProg(null);
     try {
       await streamSSE(`/api/jobs/${slug}/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model_size: model, language: "pt" }),
       }, {
-        progress: (d) => setStage(d.stage ?? "processando"),
+        progress: (d) => {
+          if (d.n != null && d.total != null) setProg({ n: d.n, total: d.total });
+          else setStage(d.stage ?? "processando");
+        },
         done: async () => { setLines(await getTranscript(slug)); },
         error: (d) => setErr(d.detail ?? "erro na transcrição"),
       });
     } catch (e: any) { setErr(e.message); }
-    finally { setBusy(false); setStage(""); }
+    finally { setBusy(false); setStage(""); setProg(null); }
   };
 
   const editWord = (li: number, wi: number, val: string) => {
@@ -66,6 +71,9 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
         </button>
       </div>
       {err && <p className="text-red-400 text-sm">{err}</p>}
+      {busy && prog && (
+        <ProgressBar label="Transcrição" n={Math.round(prog.n)} total={Math.round(prog.total)} />
+      )}
       {lines && (
         <div className="relative">
           <video
