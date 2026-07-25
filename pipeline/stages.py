@@ -17,13 +17,15 @@ def stage_ingest(job: Job, src_paths: list[str]) -> None:
                 "duration": meta.duration, "nb_frames": meta.nb_frames})
 
 
-def stage_cut(job: Job) -> None:
+def stage_cut(job: Job, progress_cb=None) -> None:
     src = job.dir / "source.mp4"
     meta = load_json(job.dir / "probe.json")
     silences = detect_silences(str(src), job.config.silence_threshold_db, job.config.min_silence)
     kept = compute_kept_segments(silences, meta["duration"], job.config.padding, job.config.min_segment)
     write_json(job.dir / "cuts.json", [{"start": s.start, "end": s.end} for s in kept])
-    cut_segments(str(src), kept, str(job.dir / "trimmed.mp4"))
+    total = sum(s.duration for s in kept)
+    cut_segments(str(src), kept, str(job.dir / "trimmed.mp4"),
+                 total_duration=total, progress_cb=progress_cb)
     tmeta = probe_video(str(job.dir / "trimmed.mp4"))
     write_json(job.dir / "trimmed.probe.json",
                {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,

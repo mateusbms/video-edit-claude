@@ -78,13 +78,21 @@ def parse_ffmpeg_progress(line: str) -> float | None:
     return None
 
 
-def cut_segments(src: str, segments: list[Segment], out_path: str) -> None:
+def cut_segments(src, segments, out_path, total_duration=None, progress_cb=None) -> None:
     if not segments:
         raise ValueError("nenhum segmento para cortar")
     between = build_select_expr(segments)
     vf = f"select='{between}',setpts=N/FRAME_RATE/TB"
     af = f"aselect='{between}',asetpts=N/SR/TB"
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", src, "-vf", vf, "-af", af, out_path],
-        check=True,
+    proc = subprocess.Popen(
+        ["ffmpeg", "-y", "-i", src, "-vf", vf, "-af", af,
+         "-progress", "pipe:1", "-nostats", out_path],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
     )
+    for line in proc.stdout:
+        t = parse_ffmpeg_progress(line)
+        if t is not None and progress_cb and total_duration:
+            progress_cb(min(t, total_duration), total_duration)
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg cut falhou (rc={proc.returncode})")
