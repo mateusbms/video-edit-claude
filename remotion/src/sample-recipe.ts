@@ -18,7 +18,26 @@ export const sampleRecipe: TEditRecipe = {
       ],
     },
   ],
-  overlays: [{ type: "lowerThird", fromFrame: 0, durationInFrames: 90, text: "O segredo" }],
+  overlays: [
+    {
+      id: "ov_sample",
+      type: "hook",
+      text: "O segredo",
+      fromFrame: 0,
+      durationInFrames: 90,
+      x: 0.5,
+      y: 0.16,
+      anchor: "center",
+      fontSize: 84,
+      color: "",
+      highlightColor: "",
+      fontFamily: "",
+      enter: "slide-up",
+      exit: "fade",
+      enterDurationInFrames: 12,
+      exitDurationInFrames: 12,
+    },
+  ],
   formats: { main16x9: { width: 1920, height: 1080 }, vertical9x16: { width: 1080, height: 1920 } },
 };
 

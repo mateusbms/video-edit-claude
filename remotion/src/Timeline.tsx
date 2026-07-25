@@ -1,7 +1,6 @@
 import { AbsoluteFill, Sequence } from "remotion";
 import { theme } from "./theme";
 import { segmentDuration } from "./timeline-utils";
-import { HookCard } from "./components/HookCard";
 import { SourceClip } from "./components/SourceClip";
 import { CaptionLayer } from "./components/CaptionLayer";
 import { OverlayLayer } from "./components/OverlayLayer";
@@ -21,15 +20,13 @@ export const Timeline: React.FC<{ recipe: TEditRecipe; captionFontSize: number; 
         offset += dur;
         return (
           <Sequence key={i} from={from} durationInFrames={dur}>
-            {seg.type === "card" ? (
-              <HookCard title={seg.title} subtitle={seg.subtitle} />
-            ) : seg.type === "clip" ? (
+            {seg.type === "clip" ? (
               <SourceClip
                 seg={seg}
                 sourceWidth={recipe.source.width}
                 sourceHeight={recipe.source.height}
               />
-            ) : null /* scene: v2 */}
+            ) : null /* card removido (Fase B); scene: v2 */}
           </Sequence>
         );
       })}
