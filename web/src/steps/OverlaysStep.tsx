@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob } from "../api";
 import { OverlayPreview } from "../components/OverlayPreview";
+import { applyStartSec, applyEndSec } from "../overlayTime";
 import type { Overlay, OverlayAnim } from "../types";
 import type { StepProps } from "../App";
 
 const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
 const FONTS = ["Inter", "Poppins", "Montserrat", "Roboto"];
 
-function newOverlay(fromFrame: number): Overlay {
+function newOverlay(fromFrame: number, id: string): Overlay {
   return {
-    id: `ov_${Date.now().toString(36)}`,
+    id,
     type: "text", text: "Novo texto",
     fromFrame, durationInFrames: 60,
     x: 0.5, y: 0.25, anchor: "center", fontSize: 64,
@@ -28,6 +29,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const idCounter = useRef(0);
 
   useEffect(() => {
     getOverlays(slug).then(setOverlays).catch(() => {});
@@ -37,6 +39,8 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+      // escala px do render (canvas 1920) -> preview. Casa com o render 16x9;
+    // no 9x16 (1080) o texto sai proporcionalmente maior que o previsto aqui.
     const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
     update();
     const ro = new ResizeObserver(update);
@@ -51,31 +55,31 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
     setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...p } : o)));
 
   const addOverlay = () => {
-    const o = newOverlay(frame);
+    const id = `ov_${Date.now().toString(36)}_${idCounter.current++}`;
+    const o = newOverlay(frame, id);
     setOverlays((l) => [...l, o]);
     setSelectedId(o.id);
   };
   const removeOverlay = (id: string) =>
     setOverlays((l) => l.filter((o) => o.id !== id));
 
-  const save = async () => {
+  // devolve true se salvou; false em erro (para não avançar de passo em falha).
+  const save = async (): Promise<boolean> => {
     setSaving(true); setErr(null);
     try {
       await putOverlays(slug, overlays);
       await runRecipe(slug);
-    } catch (e: any) { setErr(e.message); }
+      return true;
+    } catch (e: any) { setErr(e.message); return false; }
     finally { setSaving(false); }
   };
 
   const startSec = selected ? selected.fromFrame / fps : 0;
   const endSec = selected ? (selected.fromFrame + selected.durationInFrames) / fps : 0;
-  const setStartSec = (s: number) => selected && patch(selected.id, {
-    fromFrame: Math.max(0, Math.round(s * fps)),
-    durationInFrames: Math.max(1, Math.round(endSec * fps) - Math.round(s * fps)),
-  });
-  const setEndSec = (s: number) => selected && patch(selected.id, {
-    durationInFrames: Math.max(1, Math.round(s * fps) - selected.fromFrame),
-  });
+  const setStartSec = (s: number) => selected &&
+    patch(selected.id, applyStartSec(selected.fromFrame, selected.durationInFrames, s, fps));
+  const setEndSec = (s: number) => selected &&
+    patch(selected.id, applyEndSec(selected.fromFrame, s, fps));
 
   return (
     <section className="space-y-4">
@@ -183,7 +187,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
 
       <div className="pt-4 flex justify-between">
         <button onClick={back} className="px-4 py-2 bg-zinc-800 rounded">← Voltar</button>
-        <button onClick={async () => { await save(); next(); }} className="px-4 py-2 bg-emerald-600 rounded font-medium">
+        <button onClick={async () => { if (await save()) next(); }} className="px-4 py-2 bg-emerald-600 rounded font-medium">
           Próximo →
         </button>
       </div>

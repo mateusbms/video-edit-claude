@@ -28,4 +28,20 @@ describe("OverlayPreview", () => {
     fireEvent.pointerDown(screen.getByText("Oferta"));
     expect(onSelect).toHaveBeenCalledWith("ov_a");
   });
+
+  it("só chama onMove durante o arraste (após pointerDown)", () => {
+    const onMove = vi.fn();
+    const { container } = render(
+      <OverlayPreview overlays={[ov]} frame={20} scale={1} selectedId={null} onSelect={() => {}} onMove={onMove} />,
+    );
+    const wrapper = container.firstChild as HTMLElement;
+    // pointermove sem arraste ativo -> não move
+    fireEvent.pointerMove(wrapper, { clientX: 10, clientY: 10 });
+    expect(onMove).not.toHaveBeenCalled();
+    // inicia o arraste no bloco e move -> onMove com o id
+    fireEvent.pointerDown(screen.getByText("Oferta"), { pointerId: 1 });
+    fireEvent.pointerMove(wrapper, { clientX: 10, clientY: 10 });
+    expect(onMove).toHaveBeenCalled();
+    expect(onMove.mock.calls[0][0]).toBe("ov_a");
+  });
 });

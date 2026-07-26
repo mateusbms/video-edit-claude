@@ -49,4 +49,23 @@ describe("OverlaysStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /remover/i }));
     expect(screen.queryByDisplayValue(/novo texto/i)).not.toBeInTheDocument();
   });
+
+  it("não avança de passo quando o salvar falha", async () => {
+    const next = vi.fn();
+    const f = vi.fn(async (url: string, init?: any) => {
+      if (url.endsWith("/overlays") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
+        return { ok: true, json: async () => ({ slug: "s1", probe: { fps: 30 } }) } as any;
+      if (init?.method === "PUT")
+        return { ok: false, statusText: "erro", json: async () => ({ detail: "boom" }) } as any;
+      return { ok: true, json: async () => ({ ok: true }) } as any;
+    });
+    vi.stubGlobal("fetch", f);
+    render(<OverlaysStep {...props} next={next} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /próximo/i }));
+    await waitFor(() => expect(screen.getByText(/boom/i)).toBeInTheDocument());
+    expect(next).not.toHaveBeenCalled();
+  });
 });
