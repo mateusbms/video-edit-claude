@@ -72,6 +72,30 @@ class CaptionStyleParams(BaseModel):
     fontFamily: str = ""
 
 
+OverlayAnim = Literal["fade", "slide-up", "slide-down", "pop", "none"]
+# aceita hex (#rgb..#rrggbbaa) OU string vazia (=> usa cor da marca)
+HexOrEmpty = Annotated[str, StringConstraints(pattern=r"^(#[0-9a-fA-F]{3,8})?$")]
+
+
+class OverlayParams(BaseModel):
+    id: str = ""
+    type: str = "text"
+    text: str
+    fromFrame: int
+    durationInFrames: int
+    x: float = 0.5
+    y: float = 0.18
+    anchor: Literal["center", "left", "right"] = "center"
+    fontSize: int = 64
+    color: HexOrEmpty = ""
+    highlightColor: HexOrEmpty = ""
+    fontFamily: str = ""
+    enter: OverlayAnim = "slide-up"
+    exit: OverlayAnim = "fade"
+    enterDurationInFrames: int = 12
+    exitDurationInFrames: int = 12
+
+
 class JobState(BaseModel):
     slug: str
     probe: ProbeOut | None = None

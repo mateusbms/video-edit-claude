@@ -88,6 +88,24 @@ def test_brand_colors_rejects_non_hex():
         )
 
 
+def test_overlay_params_defaults_and_validation():
+    from api.models import OverlayParams
+    import pytest
+    from pydantic import ValidationError
+    # defaults preenchidos a partir do mínimo
+    o = OverlayParams(text="oi", fromFrame=0, durationInFrames=60)
+    assert o.x == 0.5 and o.y == 0.18 and o.anchor == "center"
+    assert o.fontSize == 64 and o.enter == "slide-up" and o.exit == "fade"
+    assert o.color == "" and o.id == "" and o.type == "text"
+    # hex válido aceito; "" aceito; hex inválido rejeitado
+    assert OverlayParams(text="x", fromFrame=0, durationInFrames=1, color="#ff0000").color == "#ff0000"
+    with pytest.raises(ValidationError):
+        OverlayParams(text="x", fromFrame=0, durationInFrames=1, color="vermelho")
+    # enum de animação inválido rejeitado
+    with pytest.raises(ValidationError):
+        OverlayParams(text="x", fromFrame=0, durationInFrames=1, enter="zoom")
+
+
 def test_animated_recipe_rejects_empty_scenes():
     with pytest.raises(ValidationError):
         AnimatedRecipe(
