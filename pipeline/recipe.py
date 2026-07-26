@@ -42,6 +42,7 @@ def build_recipe(
     trimmed_frames_actual: int | None = None,
     caption_style: dict | None = None,
     brand: dict | None = None,
+    overlays: list[dict] | None = None,
 ) -> dict:
     # Se temos nb_frames do ffprobe, usar diretamente — evita Remotion ler
     # além do fim do vídeo quando duration*fps > nb_frames real.
@@ -115,6 +116,8 @@ def build_recipe(
             }
         )
 
+    manual_overlays = overlays or []
+
     return {
         "kind": "recorded",
         "orientation": orientation,
@@ -131,7 +134,7 @@ def build_recipe(
         ],
         "captions": captions,
         "captionStyle": resolved_caption_style,
-        "overlays": hook_overlays,
+        "overlays": hook_overlays + manual_overlays,
         "formats": {
             "main16x9": {"width": 1920, "height": 1080},
             "vertical9x16": {"width": 1080, "height": 1920},

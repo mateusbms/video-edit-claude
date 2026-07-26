@@ -137,6 +137,38 @@ def test_build_recipe_caption_style_overrides_brand():
     assert cs["fontFamily"] == "Inter"
 
 
+def test_build_recipe_concatenates_manual_overlays_after_hook():
+    manual = [{
+        "id": "ov_a", "type": "text", "text": "Oferta",
+        "fromFrame": 30, "durationInFrames": 60,
+        "x": 0.5, "y": 0.3, "anchor": "center", "fontSize": 72,
+        "color": "", "highlightColor": "", "fontFamily": "",
+        "enter": "pop", "exit": "fade",
+        "enterDurationInFrames": 10, "exitDurationInFrames": 10,
+    }]
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=2.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "H", "subtitle": "", "duration_frames": 90},
+        max_chars=99, max_gap=5.0,
+        overlays=manual,
+    )
+    assert recipe["overlays"][0]["type"] == "hook"
+    assert recipe["overlays"][-1]["id"] == "ov_a"
+    assert recipe["overlays"][-1]["text"] == "Oferta"
+
+
+def test_build_recipe_no_manual_overlays_defaults_to_hook_only():
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "H", "subtitle": "", "duration_frames": 60},
+        max_chars=99, max_gap=5.0,
+    )
+    assert len(recipe["overlays"]) == 1
+    assert recipe["overlays"][0]["type"] == "hook"
+
+
 def test_stage_recipe_uses_brand_kit(tmp_path, monkeypatch):
     import json as _json
     import dataclasses
