@@ -1,5 +1,5 @@
 import type {
-  Hook, JobState, CaptionLine, SSEEvent,
+  Hook, JobState, CaptionLine, SSEEvent, Overlay,
 } from "./types";
 
 const BASE = "/api";
@@ -57,6 +57,17 @@ export async function putHook(slug: string, hook: Hook): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/hook`, {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(hook),
+  }));
+}
+
+export async function getOverlays(slug: string): Promise<Overlay[]> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/overlays`));
+}
+
+export async function putOverlays(slug: string, overlays: Overlay[]): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/overlays`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(overlays),
   }));
 }
 

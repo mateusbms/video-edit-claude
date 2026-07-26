@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseSSEChunk } from "../api";
+import { describe, it, expect, vi } from "vitest";
+import { parseSSEChunk, getOverlays, putOverlays } from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -20,5 +20,24 @@ describe("parseSSEChunk", () => {
   it("ignora linhas incompletas (sem data)", () => {
     const out = parseSSEChunk("event: progress\n\n");
     expect(out).toEqual([]);
+  });
+});
+
+describe("overlays api", () => {
+  it("putOverlays faz PUT com o payload e getOverlays faz GET", async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      if (init?.method === "PUT") return { ok: true, json: async () => ({ ok: true }) } as any;
+      return { ok: true, json: async () => ([{ id: "ov_a", text: "x" }]) } as any;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await putOverlays("s1", [{ id: "ov_a", text: "x", fromFrame: 0, durationInFrames: 10 } as any]);
+    const got = await getOverlays("s1");
+    vi.unstubAllGlobals();
+    const put = calls.find((c) => c.init?.method === "PUT");
+    expect(put.url).toBe("/api/jobs/s1/overlays");
+    expect(JSON.parse(put.init.body)[0].id).toBe("ov_a");
+    expect(got[0].id).toBe("ov_a");
   });
 });

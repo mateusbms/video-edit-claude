@@ -11,6 +11,27 @@ export type CaptionLine = { text: string; start: number; end: number; words: Wor
 
 export type Hook = { title: string; subtitle: string; duration_frames: number };
 
+export type OverlayAnim = "fade" | "slide-up" | "slide-down" | "pop" | "none";
+
+export type Overlay = {
+  id: string;
+  type: string;
+  text: string;
+  fromFrame: number;
+  durationInFrames: number;
+  x: number;
+  y: number;
+  anchor: "center" | "left" | "right";
+  fontSize: number;
+  color: string;
+  highlightColor: string;
+  fontFamily: string;
+  enter: OverlayAnim;
+  exit: OverlayAnim;
+  enterDurationInFrames: number;
+  exitDurationInFrames: number;
+};
+
 export type CutSegment = { start: number; end: number };
 
 export type CutResult = {
