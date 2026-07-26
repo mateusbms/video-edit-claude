@@ -52,3 +52,43 @@ def test_stage_ingest_joins_multiple(tmp_path):
     probe = load_json(job.dir / "probe.json")
     assert probe["width"] == 640
     assert probe["duration"] > 1.5
+
+
+def test_stage_recipe_includes_manual_overlays(tmp_path):
+    job = init_job(tmp_path / "jobs", "c1")
+    write_json(job.dir / "probe.json", {"width": 1920, "height": 1080, "fps": 30, "duration": 2.0})
+    write_json(job.dir / "transcript.json",
+               [{"text": "ola", "start": 0.0, "end": 0.5,
+                 "words": [{"word": "ola", "start": 0.0, "end": 0.5}]}])
+    write_json(job.dir / "hook.json", {"title": "H", "subtitle": ""})
+    write_json(job.dir / "overlays.json", [{
+        "id": "ov_a", "type": "text", "text": "Manual",
+        "fromFrame": 10, "durationInFrames": 20,
+        "x": 0.5, "y": 0.3, "anchor": "center", "fontSize": 64,
+        "color": "", "highlightColor": "", "fontFamily": "",
+        "enter": "fade", "exit": "fade",
+        "enterDurationInFrames": 12, "exitDurationInFrames": 12,
+    }])
+    stage_recipe(job)
+    recipe = load_json(job.dir / "edit-recipe.json")
+    assert any(o["text"] == "Manual" for o in recipe["overlays"])
+    assert recipe["overlays"][0]["type"] == "hook"  # hook ainda primeiro
+
+
+@_needs_ffmpeg
+def test_stage_refine_deletes_overlays_json(tmp_path):
+    from pipeline.stages import stage_refine
+    from pipeline.silence import Segment
+    from pipeline.probe import probe_video
+    job = init_job(tmp_path / "jobs", "c2")
+    trimmed = job.dir / "trimmed.mp4"
+    _clip(trimmed, 320, 240, 2.0)
+    tm = probe_video(str(trimmed))
+    write_json(job.dir / "trimmed.probe.json",
+               {"width": tm.width, "height": tm.height, "fps": tm.fps,
+                "duration": tm.duration, "nb_frames": tm.nb_frames})
+    write_json(job.dir / "overlays.json", [{"id": "ov_a", "type": "text", "text": "m",
+                                            "fromFrame": 0, "durationInFrames": 10}])
+    # remove um pequeno trecho no meio; sobra vídeo suficiente
+    stage_refine(job, [Segment(0.5, 1.0)])
+    assert not (job.dir / "overlays.json").exists()

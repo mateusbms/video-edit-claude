@@ -49,7 +49,7 @@ def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
     # o trimmed mudou: invalida artefatos derivados para não renderizar legendas
     # dessincronizadas se o usuário refinar depois de transcrever.
-    for stale in ("transcript.json", "edit-recipe.json"):
+    for stale in ("transcript.json", "edit-recipe.json", "overlays.json"):
         (job.dir / stale).unlink(missing_ok=True)
     return tmeta.duration
 
@@ -83,6 +83,10 @@ def stage_recipe(job: Job) -> None:
         kit = load_kit(job.config.brand_kit_slug)
         if kit:
             brand = {"colors": kit.colors.model_dump(), "fonts": kit.fonts.model_dump()}
+    manual_overlays = None
+    overlays_path = job.dir / "overlays.json"
+    if overlays_path.exists():
+        manual_overlays = load_json(overlays_path)
     recipe = build_recipe(
         width=meta["width"], height=meta["height"], fps=meta["fps"],
         trimmed_duration=trimmed_duration, words=words,
@@ -97,5 +101,6 @@ def stage_recipe(job: Job) -> None:
             "fontFamily": job.config.caption_font,
         },
         brand=brand,
+        overlays=manual_overlays,
     )
     write_json(job.dir / "edit-recipe.json", recipe)
