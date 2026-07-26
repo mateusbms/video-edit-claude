@@ -5,6 +5,7 @@ import { UploadStep } from "./steps/UploadStep";
 import { CutsStep } from "./steps/CutsStep";
 import { TranscriptStep } from "./steps/TranscriptStep";
 import { HookStep } from "./steps/HookStep";
+import { OverlaysStep } from "./steps/OverlaysStep";
 import { RenderStep } from "./steps/RenderStep";
 import type { StepProps } from "./App";
 
@@ -15,10 +16,10 @@ export function RecordedWizard() {
 
   useEffect(() => { saveState({ slug, step }); }, [slug, step]);
 
-  const next = () => setStep((s) => Math.min(4, s + 1));
+  const next = () => setStep((s) => Math.min(5, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
 
-  const Steps: React.ComponentType<StepProps>[] = [UploadStep, CutsStep, TranscriptStep, HookStep, RenderStep];
+  const Steps: React.ComponentType<StepProps>[] = [UploadStep, CutsStep, TranscriptStep, HookStep, OverlaysStep, RenderStep];
   const Current = Steps[step];
 
   return (

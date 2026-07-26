@@ -1,4 +1,4 @@
-const STEPS = ["Upload", "Cortes", "Transcrição", "Hook", "Render"];
+const STEPS = ["Upload", "Cortes", "Transcrição", "Hook", "Textos", "Render"];
 
 export const Stepper: React.FC<{ step: number; onJump: (s: number) => void; labels?: readonly string[] }> = ({ step, onJump, labels }) => {
   const activeLabels = labels || STEPS;
