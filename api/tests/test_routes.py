@@ -126,3 +126,37 @@ def test_caption_style_persists(client, sample_mp4):
     s = client.get("/api/jobs/cs1").json()
     assert s["captionStyle"]["fontSize"] == 72
     assert s["captionStyle"]["fontFamily"] == "Poppins"
+
+
+def test_put_and_get_overlays_roundtrip(client, sample_mp4):
+    _upload(client, sample_mp4, "ov1")
+    payload = [{
+        "id": "ov_a", "type": "text", "text": "Oferta",
+        "fromFrame": 30, "durationInFrames": 60,
+        "x": 0.5, "y": 0.3, "anchor": "center", "fontSize": 72,
+        "color": "#ffcc00", "highlightColor": "", "fontFamily": "Poppins",
+        "enter": "pop", "exit": "fade",
+        "enterDurationInFrames": 10, "exitDurationInFrames": 10,
+    }]
+    r = client.put("/api/jobs/ov1/overlays", json=payload)
+    assert r.status_code == 200, r.text
+    r2 = client.get("/api/jobs/ov1/overlays")
+    assert r2.status_code == 200
+    got = r2.json()
+    assert got[0]["text"] == "Oferta"
+    assert got[0]["color"] == "#ffcc00"
+    assert got[0]["enter"] == "pop"
+
+
+def test_get_overlays_empty_when_absent(client, sample_mp4):
+    _upload(client, sample_mp4, "ov2")
+    r = client.get("/api/jobs/ov2/overlays")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_put_overlays_rejects_invalid_hex(client, sample_mp4):
+    _upload(client, sample_mp4, "ov3")
+    bad = [{"text": "x", "fromFrame": 0, "durationInFrames": 10, "color": "nope"}]
+    r = client.put("/api/jobs/ov3/overlays", json=bad)
+    assert r.status_code == 422

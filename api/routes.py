@@ -14,7 +14,7 @@ from api.jobs import (
 )
 from api.models import (
     CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
-    Hook, RefineParams, RenderParams, TranscribeParams,
+    Hook, OverlayParams, RefineParams, RenderParams, TranscribeParams,
 )
 from api.progress import run_with_progress
 from api.sse import sse_event
@@ -115,6 +115,23 @@ def put_transcript(slug: str, lines: list[dict]):
     jobs_root, *_ = _roots()
     p = Path(jobs_root) / slug / "transcript.json"
     write_json(p, lines)
+    return {"ok": True}
+
+
+@router.get("/jobs/{slug}/overlays")
+def get_overlays(slug: str):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "overlays.json"
+    if not p.exists():
+        return []
+    return load_json(p)
+
+
+@router.put("/jobs/{slug}/overlays")
+def put_overlays(slug: str, overlays: list[OverlayParams]):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "overlays.json"
+    write_json(p, [o.model_dump() for o in overlays])
     return {"ok": True}
 
 
