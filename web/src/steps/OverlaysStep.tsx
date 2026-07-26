@@ -1,0 +1,192 @@
+import { useEffect, useRef, useState } from "react";
+import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob } from "../api";
+import { OverlayPreview } from "../components/OverlayPreview";
+import type { Overlay, OverlayAnim } from "../types";
+import type { StepProps } from "../App";
+
+const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
+const FONTS = ["Inter", "Poppins", "Montserrat", "Roboto"];
+
+function newOverlay(fromFrame: number): Overlay {
+  return {
+    id: `ov_${Date.now().toString(36)}`,
+    type: "text", text: "Novo texto",
+    fromFrame, durationInFrames: 60,
+    x: 0.5, y: 0.25, anchor: "center", fontSize: 64,
+    color: "", highlightColor: "", fontFamily: "",
+    enter: "slide-up", exit: "fade",
+    enterDurationInFrames: 12, exitDurationInFrames: 12,
+  };
+}
+
+export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
+  const [overlays, setOverlays] = useState<Overlay[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fps, setFps] = useState(30);
+  const [now, setNow] = useState(0);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    getOverlays(slug).then(setOverlays).catch(() => {});
+    getJob(slug).then((j: any) => { if (j?.probe?.fps) setFps(j.probe.fps); }).catch(() => {});
+  }, [slug]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(v);
+    return () => ro.disconnect();
+  }, []);
+
+  const frame = Math.round(now * fps);
+  const selected = overlays.find((o) => o.id === selectedId) || null;
+
+  const patch = (id: string, p: Partial<Overlay>) =>
+    setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...p } : o)));
+
+  const addOverlay = () => {
+    const o = newOverlay(frame);
+    setOverlays((l) => [...l, o]);
+    setSelectedId(o.id);
+  };
+  const removeOverlay = (id: string) =>
+    setOverlays((l) => l.filter((o) => o.id !== id));
+
+  const save = async () => {
+    setSaving(true); setErr(null);
+    try {
+      await putOverlays(slug, overlays);
+      await runRecipe(slug);
+    } catch (e: any) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const startSec = selected ? selected.fromFrame / fps : 0;
+  const endSec = selected ? (selected.fromFrame + selected.durationInFrames) / fps : 0;
+  const setStartSec = (s: number) => selected && patch(selected.id, {
+    fromFrame: Math.max(0, Math.round(s * fps)),
+    durationInFrames: Math.max(1, Math.round(endSec * fps) - Math.round(s * fps)),
+  });
+  const setEndSec = (s: number) => selected && patch(selected.id, {
+    durationInFrames: Math.max(1, Math.round(s * fps) - selected.fromFrame),
+  });
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-xl font-semibold">5. Textos</h2>
+      <p className="text-sm text-zinc-400">
+        Adicione blocos de texto sobre o vídeo. Recortar o vídeo depois (passo Cortes) remove os textos manuais.
+      </p>
+
+      <div className="relative">
+        <video
+          ref={videoRef}
+          src={mediaUrl(slug, "trimmed.mp4")}
+          controls
+          onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
+          className="w-full rounded border border-zinc-800"
+        />
+        <OverlayPreview
+          overlays={overlays}
+          frame={frame}
+          scale={previewScale}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onMove={(id, x, y) => patch(id, { x, y })}
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={addOverlay} className="px-3 py-2 bg-emerald-600 rounded font-medium">+ Texto</button>
+        <button onClick={save} disabled={saving} className="px-3 py-2 bg-zinc-800 rounded disabled:opacity-40">
+          {saving ? "Salvando..." : "Salvar"}
+        </button>
+      </div>
+      {err && <p className="text-red-400 text-sm">{err}</p>}
+
+      <ol className="space-y-1 text-sm">
+        {overlays.map((o) => (
+          <li key={o.id}
+            className={`flex items-center gap-2 px-2 py-1 rounded ${o.id === selectedId ? "bg-zinc-800" : ""}`}>
+            <button className="flex-1 text-left" onClick={() => setSelectedId(o.id)}>
+              <input
+                aria-label={`texto do overlay ${o.id}`}
+                value={o.text}
+                onChange={(e) => patch(o.id, { text: e.target.value })}
+                className="bg-transparent w-full outline-none border-b border-transparent focus:border-emerald-500"
+              />
+            </button>
+            <span className="text-xs text-zinc-500">{(o.fromFrame / fps).toFixed(1)}s</span>
+            <button aria-label={`remover ${o.id}`} onClick={() => removeOverlay(o.id)} className="text-red-400 px-2">remover</button>
+          </li>
+        ))}
+      </ol>
+
+      {selected && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">Início (s)
+            <input type="number" step={0.1} min={0} value={startSec.toFixed(1)}
+              onChange={(e) => setStartSec(Number(e.target.value))}
+              className="bg-zinc-800 rounded px-2 py-1" />
+          </label>
+          <label className="flex flex-col gap-1">Fim (s)
+            <input type="number" step={0.1} min={0} value={endSec.toFixed(1)}
+              onChange={(e) => setEndSec(Number(e.target.value))}
+              className="bg-zinc-800 rounded px-2 py-1" />
+          </label>
+          <button className="col-span-2 px-2 py-1 bg-zinc-800 rounded"
+            onClick={() => setStartSec(now)}>Marcar início no tempo atual</button>
+          <label className="flex flex-col gap-1">Tamanho
+            <input aria-label="tamanho" type="range" min={24} max={160} value={selected.fontSize}
+              onChange={(e) => patch(selected.id, { fontSize: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">Cor
+            <input aria-label="cor" type="color" value={selected.color || "#ffffff"}
+              onChange={(e) => patch(selected.id, { color: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1">Fonte
+            <select aria-label="fonte" value={selected.fontFamily || "Inter"}
+              onChange={(e) => patch(selected.id, { fontFamily: e.target.value })}
+              className="bg-zinc-800 rounded px-2 py-1">
+              {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Âncora
+            <select aria-label="ancora" value={selected.anchor}
+              onChange={(e) => patch(selected.id, { anchor: e.target.value as Overlay["anchor"] })}
+              className="bg-zinc-800 rounded px-2 py-1">
+              {["center", "left", "right"].map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Entrada
+            <select aria-label="entrada" value={selected.enter}
+              onChange={(e) => patch(selected.id, { enter: e.target.value as OverlayAnim })}
+              className="bg-zinc-800 rounded px-2 py-1">
+              {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Saída
+            <select aria-label="saida" value={selected.exit}
+              onChange={(e) => patch(selected.id, { exit: e.target.value as OverlayAnim })}
+              className="bg-zinc-800 rounded px-2 py-1">
+              {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <div className="pt-4 flex justify-between">
+        <button onClick={back} className="px-4 py-2 bg-zinc-800 rounded">← Voltar</button>
+        <button onClick={async () => { await save(); next(); }} className="px-4 py-2 bg-emerald-600 rounded font-medium">
+          Próximo →
+        </button>
+      </div>
+    </section>
+  );
+};
