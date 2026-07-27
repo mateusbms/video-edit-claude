@@ -33,6 +33,19 @@ describe("HookStep", () => {
     expect(screen.getByLabelText(/ancora do hook/i)).toBeInTheDocument();
   });
 
+  it("mount sem edição não salva (sem PUT /hook nem recipe)", async () => {
+    vi.useFakeTimers();
+    try {
+      const calls = mockFetch();
+      render(<HookStep {...props} />);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(calls.find((c) => c.init?.method === "PUT" && c.url.endsWith("/hook"))).toBeFalsy();
+      expect(calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/recipe"))).toBeFalsy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("mudar o tamanho persiste via PUT /hook (debounce)", async () => {
     const calls = mockFetch();
     render(<HookStep {...props} />);

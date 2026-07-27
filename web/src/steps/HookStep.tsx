@@ -22,8 +22,10 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const dirty = useRef(false); // só salva após edição do usuário (evita clobber/recipe no mount)
 
   useEffect(() => {
+    dirty.current = false;
     getHook(slug).then((h: any) => setHook({ ...DEF, ...h })).catch(() => {});
     getTranscript(slug).then(setLines).catch(() => {});
     getJob(slug).then((j: any) => { if (j?.captionStyle) setCapStyle(j.captionStyle); }).catch(() => {});
@@ -40,6 +42,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   }, []);
 
   useEffect(() => {
+    if (!dirty.current) return; // mount / carga do getHook não disparam save
     const t = setTimeout(async () => {
       try { await putHook(slug, hook); await runRecipe(slug); }
       catch (e: any) { setErr(e.message); }
@@ -47,7 +50,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
     return () => clearTimeout(t);
   }, [hook, slug]);
 
-  const set = (p: Partial<Hook>) => setHook((h) => ({ ...h, ...p }));
+  const set = (p: Partial<Hook>) => { dirty.current = true; setHook((h) => ({ ...h, ...p })); };
 
   const overlays = hookToOverlays(hook);
   const titleOverlay = overlays.slice(0, 1);
