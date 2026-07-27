@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob, getTranscript, getHook } from "../api";
 import { OverlayPreview } from "../components/OverlayPreview";
+import { OverlayTimeline } from "../components/OverlayTimeline";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
 import { hookToOverlays } from "../overlayHook";
 import { captionZone } from "../overlayGeom";
 import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
+import { FONTS } from "../fonts";
 
 const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
-const FONTS = ["Inter", "Poppins", "Montserrat", "Roboto"];
 
 function newOverlay(fromFrame: number, id: string): Overlay {
   return {
@@ -34,6 +35,10 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [lines, setLines] = useState<CaptionLine[]>([]);
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
   const [hook, setHook] = useState<Hook | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [durationSec, setDurationSec] = useState(0);
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const idCounter = useRef(0);
 
@@ -43,9 +48,12 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
     getHook(slug).then(setHook).catch(() => {});
     getJob(slug).then((j: any) => {
       if (j?.probe?.fps) setFps(j.probe.fps);
+      if (j?.probe?.duration) setDurationSec(j.probe.duration);
       if (j?.captionStyle) setCapStyle(j.captionStyle);
     }).catch(() => {});
   }, [slug]);
+
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -80,6 +88,9 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
     try {
       await putOverlays(slug, overlays);
       await runRecipe(slug);
+      setSaved(true);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2000);
       return true;
     } catch (e: any) { setErr(e.message); return false; }
     finally { setSaving(false); }
@@ -108,6 +119,9 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           src={mediaUrl(slug, "trimmed.mp4")}
           controls
           onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onLoadedMetadata={(e) => setDurationSec((e.target as HTMLVideoElement).duration || durationSec)}
           className="w-full rounded border border-zinc-800"
         />
         <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
@@ -120,33 +134,50 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onMove={(id, x, y) => patch(id, { x, y })}
+          playing={playing}
         />
       </div>
 
-      <div className="flex gap-2">
+      <OverlayTimeline
+        overlays={overlays}
+        context={hookOverlays}
+        totalFrames={Math.round(durationSec * fps)}
+        currentFrame={frame}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onSeekFrame={(f) => { const v = videoRef.current; if (v) v.currentTime = f / fps; }}
+      />
+
+      <div className="flex items-center gap-2">
         <button onClick={addOverlay} className="px-3 py-2 bg-emerald-600 rounded font-medium">+ Texto</button>
         <button onClick={save} disabled={saving} className="px-3 py-2 bg-zinc-800 rounded disabled:opacity-40">
           {saving ? "Salvando..." : "Salvar"}
         </button>
+        {saved && <span className="text-emerald-400 text-sm">✓ salvo</span>}
       </div>
       {err && <p className="text-red-400 text-sm">{err}</p>}
 
       <ol className="space-y-1 text-sm">
-        {overlays.map((o) => (
-          <li key={o.id}
-            className={`flex items-center gap-2 px-2 py-1 rounded ${o.id === selectedId ? "bg-zinc-800" : ""}`}>
-            <button className="flex-1 text-left" onClick={() => setSelectedId(o.id)}>
-              <input
-                aria-label={`texto do overlay ${o.id}`}
-                value={o.text}
-                onChange={(e) => patch(o.id, { text: e.target.value })}
-                className="bg-transparent w-full outline-none border-b border-transparent focus:border-emerald-500"
-              />
-            </button>
-            <span className="text-xs text-zinc-500">{(o.fromFrame / fps).toFixed(1)}s</span>
-            <button aria-label={`remover ${o.id}`} onClick={() => removeOverlay(o.id)} className="text-red-400 px-2">remover</button>
-          </li>
-        ))}
+        {overlays.map((o) => {
+          const isSel = o.id === selectedId;
+          return (
+            <li key={o.id}
+              className={`flex items-center gap-2 px-2 py-1 rounded border-l-2 ${
+                isSel ? "bg-zinc-800 border-emerald-500" : "border-transparent"}`}>
+              {isSel && <span aria-label="item selecionado" className="text-emerald-400">▸</span>}
+              <button className="flex-1 text-left" onClick={() => setSelectedId(o.id)}>
+                <input
+                  aria-label={`texto do overlay ${o.id}`}
+                  value={o.text}
+                  onChange={(e) => patch(o.id, { text: e.target.value })}
+                  className="bg-transparent w-full outline-none border-b border-transparent focus:border-emerald-500"
+                />
+              </button>
+              <span className="text-xs text-zinc-500">{(o.fromFrame / fps).toFixed(1)}s</span>
+              <button aria-label={`remover ${o.id}`} onClick={() => removeOverlay(o.id)} className="text-red-400 px-2">remover</button>
+            </li>
+          );
+        })}
       </ol>
 
       {selected && (

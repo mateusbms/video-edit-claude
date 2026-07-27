@@ -77,4 +77,24 @@ describe("OverlaysStep", () => {
     await waitFor(() => expect(screen.getByText(/boom/i)).toBeInTheDocument());
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("mostra ✓ salvo após salvar", async () => {
+    render(<OverlaysStep {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /salvar/i }));
+    expect(await screen.findByText(/salvo/i)).toBeInTheDocument();
+  });
+
+  it("marca na lista o texto selecionado", async () => {
+    render(<OverlaysStep {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    // ao adicionar, o novo texto é auto-selecionado
+    expect(await screen.findByLabelText(/item selecionado/i)).toBeInTheDocument();
+  });
+
+  it("mostra um marcador na timeline para o texto adicionado", async () => {
+    render(<OverlaysStep {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    expect(await screen.findByLabelText(/marcador/i)).toBeInTheDocument();
+  });
 });
