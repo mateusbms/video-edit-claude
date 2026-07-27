@@ -10,6 +10,8 @@ function mockFetch() {
     calls.push({ url, init });
     if (url.endsWith("/overlays") && (!init || init.method === "GET" || !init.method))
       return { ok: true, json: async () => [] } as any;
+    if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
+    if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
     if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
       return { ok: true, json: async () => ({ slug: "s1", probe: { width: 1920, height: 1080, fps: 30, duration: 10 } }) } as any;
     return { ok: true, json: async () => ({ ok: true }) } as any;
@@ -50,11 +52,18 @@ describe("OverlaysStep", () => {
     expect(screen.queryByDisplayValue(/novo texto/i)).not.toBeInTheDocument();
   });
 
+  it("mostra o hook (contexto) no preview", async () => {
+    render(<OverlaysStep {...props} />);
+    expect(await screen.findByText("HOOK")).toBeInTheDocument();
+  });
+
   it("não avança de passo quando o salvar falha", async () => {
     const next = vi.fn();
     const f = vi.fn(async (url: string, init?: any) => {
       if (url.endsWith("/overlays") && (!init || !init.method || init.method === "GET"))
         return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
       if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
         return { ok: true, json: async () => ({ slug: "s1", probe: { fps: 30 } }) } as any;
       if (init?.method === "PUT")

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob } from "../api";
+import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob, getTranscript, getHook } from "../api";
 import { OverlayPreview } from "../components/OverlayPreview";
+import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
-import type { Overlay, OverlayAnim } from "../types";
+import { hookToOverlays } from "../overlayHook";
+import { captionZone } from "../overlayGeom";
+import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
 
 const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
@@ -28,12 +31,20 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [previewScale, setPreviewScale] = useState(1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [lines, setLines] = useState<CaptionLine[]>([]);
+  const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
+  const [hook, setHook] = useState<Hook | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const idCounter = useRef(0);
 
   useEffect(() => {
     getOverlays(slug).then(setOverlays).catch(() => {});
-    getJob(slug).then((j: any) => { if (j?.probe?.fps) setFps(j.probe.fps); }).catch(() => {});
+    getTranscript(slug).then(setLines).catch(() => {});
+    getHook(slug).then(setHook).catch(() => {});
+    getJob(slug).then((j: any) => {
+      if (j?.probe?.fps) setFps(j.probe.fps);
+      if (j?.captionStyle) setCapStyle(j.captionStyle);
+    }).catch(() => {});
   }, [slug]);
 
   useEffect(() => {
@@ -81,6 +92,9 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const setEndSec = (s: number) => selected &&
     patch(selected.id, applyEndSec(selected.fromFrame, s, fps));
 
+  const zone = captionZone(capStyle);
+  const hookOverlays = hook ? hookToOverlays(hook) : [];
+
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-semibold">5. Textos</h2>
@@ -96,8 +110,11 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
           className="w-full rounded border border-zinc-800"
         />
+        <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         <OverlayPreview
           overlays={overlays}
+          readOnlyOverlays={hookOverlays}
+          captionZone={zone}
           frame={frame}
           scale={previewScale}
           selectedId={selectedId}
