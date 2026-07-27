@@ -129,7 +129,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
             })()}
           </div>
           <video ref={videoRef} src={`${mediaUrl(slug, "trimmed.mp4")}${refineVersion ? `?v=${refineVersion}` : ""}`} controls
-            className="w-full rounded border border-zinc-800 mt-2" />
+            className="max-h-[60vh] max-w-full block mx-auto rounded border border-zinc-800 mt-2" />
           <div className="border-t border-zinc-800 pt-3 mt-3 space-y-2">
             <p className="font-medium">Cortes manuais (opcional)</p>
             <p className="text-zinc-400 text-xs">Dê play no vídeo, marque o início e o fim dos trechos a remover.</p>

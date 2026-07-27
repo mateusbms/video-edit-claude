@@ -100,13 +100,13 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
         <ProgressBar label="Transcrição" n={Math.round(prog.n)} total={Math.round(prog.total)} />
       )}
       {lines && (
-        <div className="relative">
+        <div className="relative w-fit mx-auto">
           <video
             ref={videoRef}
             src={mediaUrl(slug, "trimmed.mp4")}
             controls
             onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
-            className="w-full rounded border border-zinc-800"
+            className="max-h-[60vh] max-w-full rounded border border-zinc-800"
           />
           <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         </div>

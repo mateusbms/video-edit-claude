@@ -153,7 +153,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
         Adicione blocos de texto sobre o vídeo. Recortar o vídeo depois (passo Cortes) remove os textos manuais.
       </p>
 
-      <div className="relative">
+      <div className="relative w-fit mx-auto">
         <video
           ref={videoRef}
           src={mediaUrl(slug, "trimmed.mp4")}
@@ -162,7 +162,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onLoadedMetadata={(e) => setDurationSec((e.target as HTMLVideoElement).duration || durationSec)}
-          className="w-full rounded border border-zinc-800"
+          className="max-h-[60vh] max-w-full rounded border border-zinc-800"
         />
         <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         <OverlayPreview

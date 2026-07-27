@@ -88,12 +88,12 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
           value={hook.subtitle} onChange={(e) => set({ subtitle: e.target.value })} />
       </label>
 
-      <div className="relative">
+      <div className="relative w-fit mx-auto">
         <video ref={videoRef} src={mediaUrl(slug, "trimmed.mp4")} controls
           onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
-          className="w-full rounded border border-zinc-800" />
+          className="max-h-[60vh] max-w-full rounded border border-zinc-800" />
         <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         <OverlayPreview
           overlays={titleOverlay}
