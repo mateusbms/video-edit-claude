@@ -1,6 +1,7 @@
 import type {
   Hook, JobState, CaptionLine, SSEEvent, Overlay,
 } from "./types";
+import type { Suggestion, SuggestDefaults } from "./suggestions";
 
 const BASE = "/api";
 
@@ -68,6 +69,28 @@ export async function putOverlays(slug: string, overlays: Overlay[]): Promise<vo
   await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/overlays`, {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(overlays),
+  }));
+}
+
+export async function getSuggestions(slug: string): Promise<Suggestion[]> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/suggestions`));
+}
+
+export async function putSuggestions(slug: string, items: Suggestion[]): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/suggestions`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(items),
+  }));
+}
+
+export async function getSuggestDefaults(slug: string): Promise<SuggestDefaults> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/suggest-defaults`));
+}
+
+export async function putSuggestDefaults(slug: string, d: SuggestDefaults): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/suggest-defaults`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(d),
   }));
 }
 
