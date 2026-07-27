@@ -6,8 +6,8 @@ import { hookToOverlays } from "../overlayHook";
 import { captionZone } from "../overlayGeom";
 import type { Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
+import { FONTS } from "../fonts";
 
-const FONTS = ["Inter", "Poppins", "Montserrat", "Roboto"];
 const DEF: Hook = {
   title: "", subtitle: "", duration_frames: 90,
   x: 0.5, y: 0.16, fontSize: 84, fontFamily: "", color: "", anchor: "center",
@@ -18,6 +18,8 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [lines, setLines] = useState<CaptionLine[]>([]);
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
   const [now, setNow] = useState(0);
+  const [fps, setFps] = useState(30);
+  const [playing, setPlaying] = useState(false);
   const [previewScale, setPreviewScale] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -28,7 +30,10 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
     dirty.current = false;
     getHook(slug).then((h: any) => setHook({ ...DEF, ...h })).catch(() => {});
     getTranscript(slug).then(setLines).catch(() => {});
-    getJob(slug).then((j: any) => { if (j?.captionStyle) setCapStyle(j.captionStyle); }).catch(() => {});
+    getJob(slug).then((j: any) => {
+      if (j?.captionStyle) setCapStyle(j.captionStyle);
+      if (j?.probe?.fps) setFps(j.probe.fps);
+    }).catch(() => {});
   }, [slug]);
 
   useEffect(() => {
@@ -56,7 +61,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const titleOverlay = overlays.slice(0, 1);
   const subOverlay = overlays.slice(1);
   const zone = captionZone(capStyle);
-  const previewFrame = Math.min(30, Math.max(0, hook.duration_frames - 1));
+  const previewFrame = Math.round(now * fps);
 
   const goNext = async () => {
     setBusy(true);
@@ -86,6 +91,8 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <div className="relative">
         <video ref={videoRef} src={mediaUrl(slug, "trimmed.mp4")} controls
           onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
           className="w-full rounded border border-zinc-800" />
         <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
         <OverlayPreview
@@ -94,6 +101,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
           captionZone={zone}
           frame={previewFrame}
           scale={previewScale}
+          playing={playing}
           selectedId="ov_hook"
           onSelect={() => {}}
           onMove={(_id, x, y) => set({ x, y })}

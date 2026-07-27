@@ -57,4 +57,16 @@ describe("HookStep", () => {
       expect(JSON.parse(put.init.body).fontSize).toBe(120);
     }, { timeout: 2000 });
   });
+
+  it("hook anima com o play: some quando o vídeo passa da janela", async () => {
+    mockFetch();
+    const { container } = render(<HookStep {...props} />);
+    // pausado em t=0 (selecionado) → hook visível
+    expect(await screen.findByText("T")).toBeInTheDocument();
+    const video = container.querySelector("video") as HTMLVideoElement;
+    fireEvent.play(video);
+    Object.defineProperty(video, "currentTime", { value: 10, configurable: true });
+    fireEvent.timeUpdate(video); // frame 300 > janela (90) → some
+    expect(screen.queryByText("T")).not.toBeInTheDocument();
+  });
 });
