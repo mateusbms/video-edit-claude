@@ -45,3 +45,35 @@ describe("OverlayPreview", () => {
     expect(onMove.mock.calls[0][0]).toBe("ov_a");
   });
 });
+
+describe("OverlayPreview — extensões Fase C.1", () => {
+  it("desenha overlays read-only (contexto) sem permitir seleção", () => {
+    const onSelect = vi.fn();
+    render(
+      <OverlayPreview overlays={[]} readOnlyOverlays={[ov]} frame={20} scale={1}
+        selectedId={null} onSelect={onSelect} onMove={() => {}} />,
+    );
+    const el = screen.getByText("Oferta");
+    expect(el).toBeInTheDocument();
+    fireEvent.pointerDown(el);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("marca colisão quando o overlay cai na faixa da legenda", () => {
+    const zone = { top: 0.7, bottom: 0.95 };
+    render(
+      <OverlayPreview overlays={[{ ...ov, y: 0.8 }]} frame={20} scale={1}
+        selectedId={null} onSelect={() => {}} onMove={() => {}} captionZone={zone} />,
+    );
+    expect(screen.getByLabelText(/aviso de colis/i)).toBeInTheDocument();
+  });
+
+  it("não marca colisão fora da faixa", () => {
+    const zone = { top: 0.7, bottom: 0.95 };
+    render(
+      <OverlayPreview overlays={[{ ...ov, y: 0.2 }]} frame={20} scale={1}
+        selectedId={null} onSelect={() => {}} onMove={() => {}} captionZone={zone} />,
+    );
+    expect(screen.queryByLabelText(/aviso de colis/i)).not.toBeInTheDocument();
+  });
+});

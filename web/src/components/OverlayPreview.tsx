@@ -1,7 +1,9 @@
 import { useRef } from "react";
 import type { Overlay } from "../types";
 import { overlayProgress } from "../overlayAnim";
-import { clientToFraction } from "../overlayGeom";
+import { clientToFraction, overlapsCaption } from "../overlayGeom";
+
+type Zone = { top: number; bottom: number };
 
 export const OverlayPreview: React.FC<{
   overlays: Overlay[];
@@ -10,13 +12,13 @@ export const OverlayPreview: React.FC<{
   selectedId: string | null;
   onSelect: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
-}> = ({ overlays, frame, scale, selectedId, onSelect, onMove }) => {
+  readOnlyOverlays?: Overlay[];
+  captionZone?: Zone;
+}> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragId = useRef<string | null>(null);
 
-  const active = overlays.filter(
-    (o) => frame >= o.fromFrame && frame < o.fromFrame + o.durationInFrames,
-  );
+  const inWindow = (o: Overlay) => frame >= o.fromFrame && frame < o.fromFrame + o.durationInFrames;
 
   const onPointerDownBlock = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
@@ -32,44 +34,69 @@ export const OverlayPreview: React.FC<{
   };
   const endDrag = () => { dragId.current = null; };
 
+  const anchorTx = (ov: Overlay) =>
+    ov.anchor === "left" ? "translate(0, -50%)"
+    : ov.anchor === "right" ? "translate(-100%, -50%)"
+    : "translate(-50%, -50%)";
+  const textAlign = (ov: Overlay): "left" | "right" | "center" =>
+    ov.anchor === "left" ? "left" : ov.anchor === "right" ? "right" : "center";
+
+  const styleFor = (ov: Overlay, opacity: number, ty: number, sc: number, outline?: string): React.CSSProperties => ({
+    left: `${ov.x * 100}%`,
+    top: `${ov.y * 100}%`,
+    transform: `${anchorTx(ov)} translateY(${ty * scale}px) scale(${sc})`,
+    opacity,
+    color: ov.color || "#ffffff",
+    fontFamily: ov.fontFamily || undefined,
+    fontWeight: 800,
+    fontSize: ov.fontSize * scale,
+    lineHeight: 1.15,
+    textAlign: textAlign(ov),
+    maxWidth: "80%",
+    whiteSpace: "pre-wrap",
+    textShadow: "0 4px 24px rgba(0,0,0,0.7)",
+    outline,
+    outlineOffset: 4,
+  });
+
   return (
-    <div
-      ref={wrapRef}
-      className="absolute inset-0 pointer-events-none"
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-    >
-      {active.map((ov) => {
-        const { opacity, translateY, scale: sc } = overlayProgress(frame, ov);
-        const anchorTx =
-          ov.anchor === "left" ? "translate(0, -50%)"
-          : ov.anchor === "right" ? "translate(-100%, -50%)"
-          : "translate(-50%, -50%)";
-        const selected = ov.id === selectedId;
+    <div ref={wrapRef} className="absolute inset-0 pointer-events-none"
+      onPointerMove={onPointerMove} onPointerUp={endDrag}>
+      {captionZone && (
+        <div aria-hidden className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: `${captionZone.top * 100}%`,
+            height: `${(captionZone.bottom - captionZone.top) * 100}%`,
+            background: "rgba(234,179,8,0.12)",
+            border: "1px dashed rgba(234,179,8,0.5)",
+          }} />
+      )}
+
+      {readOnlyOverlays.filter(inWindow).map((ov) => {
+        const p = overlayProgress(frame, ov);
         return (
-          <div
-            key={ov.id}
-            onPointerDown={(e) => onPointerDownBlock(e, ov.id)}
-            className="absolute pointer-events-auto cursor-move select-none"
-            style={{
-              left: `${ov.x * 100}%`,
-              top: `${ov.y * 100}%`,
-              transform: `${anchorTx} translateY(${translateY * scale}px) scale(${sc})`,
-              opacity,
-              color: ov.color || "#ffffff",
-              fontFamily: ov.fontFamily || undefined,
-              fontWeight: 800,
-              fontSize: ov.fontSize * scale,
-              lineHeight: 1.15,
-              textAlign: ov.anchor === "left" ? "left" : ov.anchor === "right" ? "right" : "center",
-              maxWidth: "80%",
-              whiteSpace: "pre-wrap",
-              textShadow: "0 4px 24px rgba(0,0,0,0.7)",
-              outline: selected ? "2px solid #22c55e" : undefined,
-              outlineOffset: 4,
-            }}
-          >
+          <div key={`ro-${ov.id}`} className="absolute pointer-events-none select-none"
+            style={styleFor(ov, p.opacity * 0.85, p.translateY, p.scale)}>
             {ov.text}
+          </div>
+        );
+      })}
+
+      {overlays.filter(inWindow).map((ov) => {
+        const isSel = ov.id === selectedId;
+        const p = overlayProgress(frame, ov);
+        const opacity = isSel ? 1 : p.opacity;
+        const ty = isSel ? 0 : p.translateY;
+        const sc = isSel ? 1 : p.scale;
+        const colliding = !!captionZone && overlapsCaption(ov, captionZone);
+        const outline = colliding ? "2px solid #eab308" : isSel ? "2px solid #22c55e" : undefined;
+        return (
+          <div key={ov.id} onPointerDown={(e) => onPointerDownBlock(e, ov.id)}
+            className="absolute pointer-events-auto cursor-move select-none"
+            style={styleFor(ov, opacity, ty, sc, outline)}
+            title={colliding ? "pode encavalar a legenda" : undefined}>
+            {ov.text}
+            {colliding && <span aria-label="aviso de colisão" className="ml-1">⚠</span>}
           </div>
         );
       })}
