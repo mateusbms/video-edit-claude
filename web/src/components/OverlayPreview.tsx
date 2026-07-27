@@ -14,7 +14,8 @@ export const OverlayPreview: React.FC<{
   onMove: (id: string, x: number, y: number) => void;
   readOnlyOverlays?: Overlay[];
   captionZone?: Zone;
-}> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone }) => {
+  playing?: boolean;
+}> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone, playing = false }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragId = useRef<string | null>(null);
 
@@ -82,24 +83,27 @@ export const OverlayPreview: React.FC<{
         );
       })}
 
-      {overlays.filter(inWindow).map((ov) => {
-        const isSel = ov.id === selectedId;
-        const p = overlayProgress(frame, ov);
-        const opacity = isSel ? 1 : p.opacity;
-        const ty = isSel ? 0 : p.translateY;
-        const sc = isSel ? 1 : p.scale;
-        const colliding = !!captionZone && overlapsCaption(ov, captionZone);
-        const outline = colliding ? "2px solid #eab308" : isSel ? "2px solid #22c55e" : undefined;
-        return (
-          <div key={ov.id} onPointerDown={(e) => onPointerDownBlock(e, ov.id)}
-            className="absolute pointer-events-auto cursor-move select-none"
-            style={styleFor(ov, opacity, ty, sc, outline)}
-            title={colliding ? "pode encavalar a legenda" : undefined}>
-            {ov.text}
-            {colliding && <span aria-label="aviso de colisão" className="ml-1">⚠</span>}
-          </div>
-        );
-      })}
+      {overlays
+        .filter((o) => (playing ? inWindow(o) : inWindow(o) || o.id === selectedId))
+        .map((ov) => {
+          const isSel = ov.id === selectedId;
+          const freeze = isSel && !playing; // congela só pausado (para posicionar)
+          const p = overlayProgress(frame, ov);
+          const opacity = freeze ? 1 : p.opacity;
+          const ty = freeze ? 0 : p.translateY;
+          const sc = freeze ? 1 : p.scale;
+          const colliding = !!captionZone && overlapsCaption(ov, captionZone);
+          const outline = colliding ? "2px solid #eab308" : isSel ? "2px solid #22c55e" : undefined;
+          return (
+            <div key={ov.id} onPointerDown={(e) => onPointerDownBlock(e, ov.id)}
+              className="absolute pointer-events-auto cursor-move select-none"
+              style={styleFor(ov, opacity, ty, sc, outline)}
+              title={colliding ? "pode encavalar a legenda" : undefined}>
+              {ov.text}
+              {colliding && <span aria-label="aviso de colisão" className="ml-1">⚠</span>}
+            </div>
+          );
+        })}
     </div>
   );
 };

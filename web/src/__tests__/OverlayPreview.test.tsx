@@ -77,3 +77,30 @@ describe("OverlayPreview — extensões Fase C.1", () => {
     expect(screen.queryByLabelText(/aviso de colis/i)).not.toBeInTheDocument();
   });
 });
+
+describe("OverlayPreview — regra de play (Fase C.2)", () => {
+  it("tocando: selecionado fora da janela NÃO é desenhado (anima/some)", () => {
+    render(
+      <OverlayPreview overlays={[ov]} frame={200} scale={1}
+        selectedId="ov_a" onSelect={() => {}} onMove={() => {}} playing />,
+    );
+    expect(screen.queryByText("Oferta")).not.toBeInTheDocument();
+  });
+
+  it("pausado: selecionado fora da janela É desenhado (para editar)", () => {
+    render(
+      <OverlayPreview overlays={[ov]} frame={200} scale={1}
+        selectedId="ov_a" onSelect={() => {}} onMove={() => {}} />,
+    );
+    expect(screen.getByText("Oferta")).toBeInTheDocument();
+  });
+
+  it("tocando: selecionado em fade usa a opacidade da animação (não força 1)", () => {
+    render(
+      <OverlayPreview overlays={[ov]} frame={3} scale={1}
+        selectedId="ov_a" onSelect={() => {}} onMove={() => {}} playing />,
+    );
+    const el = screen.getByText("Oferta");
+    expect(Number(el.style.opacity)).toBeLessThan(1);
+  });
+});
