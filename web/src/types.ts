@@ -9,7 +9,17 @@ export type CutParams = {
 export type Word = { word: string; start: number; end: number };
 export type CaptionLine = { text: string; start: number; end: number; words: Word[] };
 
-export type Hook = { title: string; subtitle: string; duration_frames: number };
+export type Hook = {
+  title: string;
+  subtitle: string;
+  duration_frames: number;
+  x?: number;
+  y?: number;
+  fontSize?: number;
+  fontFamily?: string;
+  color?: string;
+  anchor?: "center" | "left" | "right";
+};
 
 export type OverlayAnim = "fade" | "slide-up" | "slide-down" | "pop" | "none";
 
