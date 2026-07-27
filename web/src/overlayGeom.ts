@@ -11,3 +11,20 @@ export function clientToFraction(
     y: clamp01((clientY - rect.top) / rect.height),
   };
 }
+
+// Zona (fração da altura) onde a legenda fica, para desenhar como guia de colisão.
+// Aproximação: legenda ancorada no rodapé, altura ~1.6x o fontSize. refHeight 1080 (16x9).
+export function captionZone(
+  style: { bottom: number; fontSize: number },
+  refHeight = 1080,
+): { top: number; bottom: number } {
+  const hPx = style.fontSize * 1.6;
+  const bottom = clamp01(1 - style.bottom / refHeight);
+  const top = clamp01(1 - (style.bottom + hPx) / refHeight);
+  return { top, bottom };
+}
+
+// true se o centro vertical do overlay cai dentro da faixa da legenda.
+export function overlapsCaption(o: { y: number }, zone: { top: number; bottom: number }): boolean {
+  return o.y >= zone.top && o.y <= zone.bottom;
+}
