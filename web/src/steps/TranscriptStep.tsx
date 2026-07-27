@@ -5,6 +5,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { BrandKitPicker } from "../components/BrandKitPicker";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
+import { FONTS } from "../fonts";
 
 export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [model, setModel] = useState("base");
@@ -132,7 +133,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
             <select aria-label="fonte da legenda" value={capStyle.fontFamily || "Inter"}
               onChange={(e) => saveStyle({ ...capStyle, fontFamily: e.target.value })}
               className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1">
-              {["Inter", "Poppins", "Montserrat", "Roboto"].map((f) => <option key={f} value={f}>{f}</option>)}
+              {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </label>
         </div>
