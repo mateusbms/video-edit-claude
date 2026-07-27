@@ -49,7 +49,7 @@ def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
     # o trimmed mudou: invalida artefatos derivados para não renderizar legendas
     # dessincronizadas se o usuário refinar depois de transcrever.
-    for stale in ("transcript.json", "edit-recipe.json", "overlays.json"):
+    for stale in ("transcript.json", "edit-recipe.json", "overlays.json", "suggestions.json"):
         (job.dir / stale).unlink(missing_ok=True)
     return tmeta.duration
 

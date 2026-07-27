@@ -92,3 +92,24 @@ def test_stage_refine_deletes_overlays_json(tmp_path):
     # remove um pequeno trecho no meio; sobra vídeo suficiente
     stage_refine(job, [Segment(0.5, 1.0)])
     assert not (job.dir / "overlays.json").exists()
+
+
+@_needs_ffmpeg
+def test_stage_refine_deletes_suggestions_keeps_suggest_defaults(tmp_path):
+    from pipeline.stages import stage_refine
+    from pipeline.silence import Segment
+    from pipeline.probe import probe_video
+    job = init_job(tmp_path / "jobs", "c3")
+    trimmed = job.dir / "trimmed.mp4"
+    _clip(trimmed, 320, 240, 2.0)
+    tm = probe_video(str(trimmed))
+    write_json(job.dir / "trimmed.probe.json",
+               {"width": tm.width, "height": tm.height, "fps": tm.fps,
+                "duration": tm.duration, "nb_frames": tm.nb_frames})
+    write_json(job.dir / "suggestions.json", [{"id": "sug_a", "text": "s",
+                                               "fromFrame": 0, "durationInFrames": 10}])
+    write_json(job.dir / "suggest-defaults.json", {"x": 0.5, "y": 0.12})
+    # remove um pequeno trecho no meio; sobra vídeo suficiente
+    stage_refine(job, [Segment(0.5, 1.0)])
+    assert not (job.dir / "suggestions.json").exists()
+    assert (job.dir / "suggest-defaults.json").exists()

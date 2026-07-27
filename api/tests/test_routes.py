@@ -172,3 +172,35 @@ def test_hook_put_get_persists_style(client, sample_mp4):
     got = client.get("/api/jobs/hk1/hook").json()
     assert got["x"] == 0.3 and got["y"] == 0.6 and got["fontSize"] == 100
     assert got["fontFamily"] == "Poppins" and got["color"] == "#ff0000" and got["anchor"] == "left"
+
+
+def test_suggestions_get_empty_returns_list(client, sample_mp4):
+    _upload(client, sample_mp4, "sug1")
+    r = client.get("/api/jobs/sug1/suggestions")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_suggestions_put_get_roundtrip(client, sample_mp4):
+    _upload(client, sample_mp4, "sug2")
+    items = [{
+        "id": "sug_01", "text": "R$ 6-15 mil / ano",
+        "fromFrame": 810, "durationInFrames": 60,
+        "kind": "short", "angle": "urgency", "source": "custa de 6 a 15 mil por ano",
+    }]
+    assert client.put("/api/jobs/sug2/suggestions", json=items).status_code == 200
+    got = client.get("/api/jobs/sug2/suggestions").json()
+    assert len(got) == 1 and got[0]["text"] == "R$ 6-15 mil / ano" and got[0]["kind"] == "short"
+
+
+def test_suggest_defaults_get_default_when_absent(client, sample_mp4):
+    _upload(client, sample_mp4, "sug3")
+    d = client.get("/api/jobs/sug3/suggest-defaults").json()
+    assert d["x"] == 0.5 and d["y"] == 0.12 and d["fontSize"] == 64 and d["anchor"] == "center"
+
+
+def test_suggest_defaults_roundtrip(client, sample_mp4):
+    _upload(client, sample_mp4, "sug4")
+    d = {"x": 0.5, "y": 0.8, "anchor": "center", "fontSize": 80, "fontFamily": "Poppins", "color": "#ffffff"}
+    assert client.put("/api/jobs/sug4/suggest-defaults", json=d).status_code == 200
+    assert client.get("/api/jobs/sug4/suggest-defaults").json()["y"] == 0.8

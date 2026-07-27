@@ -102,6 +102,25 @@ class OverlayParams(BaseModel):
     exitDurationInFrames: int = 12
 
 
+class Suggestion(BaseModel):
+    id: str = ""
+    text: str
+    fromFrame: int
+    durationInFrames: int
+    kind: Literal["short", "dense"] = "short"
+    angle: str = ""
+    source: str = ""
+
+
+class SuggestDefaults(BaseModel):
+    x: float = 0.5
+    y: float = 0.12
+    anchor: Literal["center", "left", "right"] = "center"
+    fontSize: int = 64
+    fontFamily: str = ""
+    color: HexOrEmpty = ""
+
+
 class JobState(BaseModel):
     slug: str
     probe: ProbeOut | None = None

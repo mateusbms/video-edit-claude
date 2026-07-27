@@ -14,7 +14,8 @@ from api.jobs import (
 )
 from api.models import (
     CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
-    Hook, OverlayParams, RefineParams, RenderParams, TranscribeParams,
+    Hook, OverlayParams, RefineParams, RenderParams,
+    SuggestDefaults, Suggestion, TranscribeParams,
 )
 from api.progress import run_with_progress
 from api.sse import sse_event
@@ -132,6 +133,40 @@ def put_overlays(slug: str, overlays: list[OverlayParams]):
     jobs_root, *_ = _roots()
     p = Path(jobs_root) / slug / "overlays.json"
     write_json(p, [o.model_dump() for o in overlays])
+    return {"ok": True}
+
+
+@router.get("/jobs/{slug}/suggestions")
+def get_suggestions(slug: str):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "suggestions.json"
+    if not p.exists():
+        return []
+    return load_json(p)
+
+
+@router.put("/jobs/{slug}/suggestions")
+def put_suggestions(slug: str, suggestions: list[Suggestion]):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "suggestions.json"
+    write_json(p, [s.model_dump() for s in suggestions])
+    return {"ok": True}
+
+
+@router.get("/jobs/{slug}/suggest-defaults")
+def get_suggest_defaults(slug: str):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "suggest-defaults.json"
+    if not p.exists():
+        return SuggestDefaults().model_dump()
+    return load_json(p)
+
+
+@router.put("/jobs/{slug}/suggest-defaults")
+def put_suggest_defaults(slug: str, defaults: SuggestDefaults):
+    jobs_root, *_ = _roots()
+    p = Path(jobs_root) / slug / "suggest-defaults.json"
+    write_json(p, defaults.model_dump())
     return {"ok": True}
 
 
