@@ -12,6 +12,10 @@ function mockFetch() {
       return { ok: true, json: async () => [] } as any;
     if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
     if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+    if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+      return { ok: true, json: async () => ([{ id: "sug_01", text: "Aplica isto", fromFrame: 30, durationInFrames: 60, kind: "short", angle: "curiosity", source: "fala origem" }]) } as any;
+    if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+      return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "Poppins", color: "" }) } as any;
     if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
       return { ok: true, json: async () => ({ slug: "s1", probe: { width: 1920, height: 1080, fps: 30, duration: 10 } }) } as any;
     return { ok: true, json: async () => ({ ok: true }) } as any;
@@ -64,6 +68,10 @@ describe("OverlaysStep", () => {
         return { ok: true, json: async () => [] } as any;
       if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
       if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+      if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ([{ id: "sug_01", text: "Aplica isto", fromFrame: 30, durationInFrames: 60, kind: "short", angle: "curiosity", source: "fala origem" }]) } as any;
+      if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "Poppins", color: "" }) } as any;
       if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
         return { ok: true, json: async () => ({ slug: "s1", probe: { fps: 30 } }) } as any;
       if (init?.method === "PUT")
@@ -96,5 +104,26 @@ describe("OverlaysStep", () => {
     render(<OverlaysStep {...props} />);
     fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
     expect(await screen.findByLabelText(/marcador/i)).toBeInTheDocument();
+  });
+
+  it("lista sugestões vindas do backend", async () => {
+    render(<OverlaysStep {...props} />);
+    expect(await screen.findByText("Aplica isto")).toBeInTheDocument();
+  });
+
+  it("aplicar uma sugestão vira texto na lista e some das sugestões", async () => {
+    render(<OverlaysStep {...props} />);
+    await screen.findByText("Aplica isto");
+    fireEvent.click(screen.getByRole("button", { name: /aplicar sugest/i }));
+    expect(await screen.findByDisplayValue("Aplica isto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /aplicar sugest/i })).not.toBeInTheDocument();
+  });
+
+  it("pular remove a sugestão sem criar texto", async () => {
+    render(<OverlaysStep {...props} />);
+    await screen.findByText("Aplica isto");
+    fireEvent.click(screen.getByRole("button", { name: /pular sugest/i }));
+    expect(screen.queryByText("Aplica isto")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Aplica isto")).not.toBeInTheDocument();
   });
 });

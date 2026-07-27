@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { getOverlays, putOverlays, runRecipe, mediaUrl, getJob, getTranscript, getHook } from "../api";
+import {
+  getOverlays, putOverlays, runRecipe, mediaUrl, getJob, getTranscript, getHook,
+  getSuggestions, putSuggestions, getSuggestDefaults, putSuggestDefaults,
+} from "../api";
 import { OverlayPreview } from "../components/OverlayPreview";
 import { OverlayTimeline } from "../components/OverlayTimeline";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
 import { hookToOverlays } from "../overlayHook";
 import { captionZone } from "../overlayGeom";
+import { suggestionToOverlay } from "../suggestions";
+import type { Suggestion, SuggestDefaults } from "../suggestions";
 import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
 import { FONTS } from "../fonts";
@@ -41,6 +46,9 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const idCounter = useRef(0);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [defs, setDefs] = useState<SuggestDefaults>({ x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: "", color: "" });
+  const defsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     getOverlays(slug).then(setOverlays).catch(() => {});
@@ -51,9 +59,12 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.probe?.duration) setDurationSec(j.probe.duration);
       if (j?.captionStyle) setCapStyle(j.captionStyle);
     }).catch(() => {});
+    getSuggestions(slug).then(setSuggestions).catch(() => {});
+    getSuggestDefaults(slug).then(setDefs).catch(() => {});
   }, [slug]);
 
   useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
+  useEffect(() => () => { if (defsTimer.current) clearTimeout(defsTimer.current); }, []);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -81,6 +92,35 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
   const removeOverlay = (id: string) =>
     setOverlays((l) => l.filter((o) => o.id !== id));
+
+  const patchDefs = (p: Partial<SuggestDefaults>) => {
+    const next = { ...defs, ...p };
+    setDefs(next);
+    if (defsTimer.current) clearTimeout(defsTimer.current);
+    defsTimer.current = setTimeout(() => { putSuggestDefaults(slug, next).catch(() => {}); }, 500);
+  };
+
+  const applySuggestion = async (s: Suggestion) => {
+    const id = `ov_${Date.now().toString(36)}_${idCounter.current++}`;
+    const ov = suggestionToOverlay(s, defs, id);
+    const nextOverlays = [...overlays, ov];
+    const nextSug = suggestions.filter((x) => x.id !== s.id);
+    setOverlays(nextOverlays); setSelectedId(id); setSuggestions(nextSug);
+    setErr(null);
+    try {
+      await putOverlays(slug, nextOverlays);
+      await putSuggestions(slug, nextSug);
+      await runRecipe(slug);
+    } catch (e: any) { setErr(e.message); }
+  };
+
+  const skipSuggestion = async (s: Suggestion) => {
+    const nextSug = suggestions.filter((x) => x.id !== s.id);
+    setSuggestions(nextSug);
+    try { await putSuggestions(slug, nextSug); } catch (e: any) { setErr(e.message); }
+  };
+
+  const reloadSuggestions = () => { getSuggestions(slug).then(setSuggestions).catch(() => {}); };
 
   // devolve true se salvou; false em erro (para não avançar de passo em falha).
   const save = async (): Promise<boolean> => {
@@ -147,6 +187,56 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
         onSelect={setSelectedId}
         onSeekFrame={(f) => { const v = videoRef.current; if (v) v.currentTime = f / fps; }}
       />
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm grid grid-cols-4 gap-3">
+        <label className="flex flex-col gap-1">Posição
+          <select aria-label="posição padrão" value={defs.y <= 0.2 ? "topo" : defs.y >= 0.7 ? "baixo" : "centro"}
+            onChange={(e) => patchDefs({ y: e.target.value === "topo" ? 0.12 : e.target.value === "baixo" ? 0.8 : 0.5 })}
+            className="bg-zinc-800 rounded px-2 py-1">
+            <option value="topo">Topo</option>
+            <option value="centro">Centro</option>
+            <option value="baixo">Baixo</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">Fonte
+          <select aria-label="fonte padrão" value={defs.fontFamily || "Inter"}
+            onChange={(e) => patchDefs({ fontFamily: e.target.value })} className="bg-zinc-800 rounded px-2 py-1">
+            {FONTS.map((ff) => <option key={ff} value={ff}>{ff}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">Cor
+          <input aria-label="cor padrão" type="color" value={defs.color || "#ffffff"}
+            onChange={(e) => patchDefs({ color: e.target.value })} />
+        </label>
+        <label className="flex flex-col gap-1">Tamanho
+          <input aria-label="tamanho padrão" type="range" min={24} max={160} value={defs.fontSize}
+            onChange={(e) => patchDefs({ fontSize: Number(e.target.value) })} />
+        </label>
+      </div>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Sugestões ({suggestions.length})</span>
+          <button aria-label="recarregar sugestões" onClick={reloadSuggestions} className="text-xs px-2 py-1 bg-zinc-800 rounded">↻ Recarregar</button>
+        </div>
+        {suggestions.length === 0 ? (
+          <p className="text-xs text-zinc-500">Peça no chat: “gera sugestões pro {slug}”. Depois clique ↻ Recarregar.</p>
+        ) : (
+          <ul className="space-y-2">
+            {suggestions.map((s) => (
+              <li key={s.id} className="flex items-start gap-2 text-sm border-l-2 border-emerald-700 pl-2">
+                <div className="flex-1">
+                  <div className="font-medium">{s.text}</div>
+                  <div className="text-xs text-zinc-500">{(s.fromFrame / fps).toFixed(1)}s · {s.kind} · {s.angle}</div>
+                  {s.source && <div className="text-xs text-zinc-600 italic">“{s.source}”</div>}
+                </div>
+                <button aria-label={`aplicar sugestão ${s.id}`} onClick={() => applySuggestion(s)} className="px-2 py-1 bg-emerald-600 rounded text-xs">✓ Aplicar</button>
+                <button aria-label={`pular sugestão ${s.id}`} onClick={() => skipSuggestion(s)} className="px-2 py-1 bg-zinc-800 rounded text-xs">✗ Pular</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="flex items-center gap-2">
         <button onClick={addOverlay} className="px-3 py-2 bg-emerald-600 rounded font-medium">+ Texto</button>
