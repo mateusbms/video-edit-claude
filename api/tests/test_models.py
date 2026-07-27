@@ -33,6 +33,13 @@ def test_hook_defaults():
     assert h.duration_frames == 90
 
 
+def test_hook_style_defaults():
+    from api.models import Hook
+    h = Hook(title="T")
+    assert h.x == 0.5 and h.y == 0.16 and h.fontSize == 84
+    assert h.fontFamily == "" and h.color == "" and h.anchor == "center"
+
+
 def test_brand_kit_minimal_valid():
     kit = BrandKit(
         version=1,

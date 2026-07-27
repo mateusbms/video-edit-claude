@@ -43,6 +43,12 @@ class Hook(BaseModel):
     title: str
     subtitle: str = ""
     duration_frames: int = 90
+    x: float = 0.5
+    y: float = 0.16
+    fontSize: int = 84
+    fontFamily: str = ""
+    color: str = ""
+    anchor: Literal["center", "left", "right"] = "center"
 
 
 class CutSegmentOut(BaseModel):

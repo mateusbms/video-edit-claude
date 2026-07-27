@@ -160,3 +160,15 @@ def test_put_overlays_rejects_invalid_hex(client, sample_mp4):
     bad = [{"text": "x", "fromFrame": 0, "durationInFrames": 10, "color": "nope"}]
     r = client.put("/api/jobs/ov3/overlays", json=bad)
     assert r.status_code == 422
+
+
+def test_hook_put_get_persists_style(client, sample_mp4):
+    _upload(client, sample_mp4, "hk1")
+    body = {"title": "T", "subtitle": "", "duration_frames": 90,
+            "x": 0.3, "y": 0.6, "fontSize": 100, "fontFamily": "Poppins",
+            "color": "#ff0000", "anchor": "left"}
+    r = client.put("/api/jobs/hk1/hook", json=body)
+    assert r.status_code == 200, r.text
+    got = client.get("/api/jobs/hk1/hook").json()
+    assert got["x"] == 0.3 and got["y"] == 0.6 and got["fontSize"] == 100
+    assert got["fontFamily"] == "Poppins" and got["color"] == "#ff0000" and got["anchor"] == "left"

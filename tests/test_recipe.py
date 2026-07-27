@@ -30,6 +30,37 @@ def test_group_words_breaks_on_gap():
     assert lines[1]["start"] == 2.0
 
 
+def test_build_recipe_hook_uses_position_and_style():
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=2.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "H", "subtitle": "sub", "duration_frames": 90,
+              "x": 0.3, "y": 0.6, "fontSize": 100, "fontFamily": "Poppins",
+              "color": "#ff0000", "anchor": "left"},
+        max_chars=99, max_gap=5.0,
+    )
+    title = recipe["overlays"][0]
+    assert title["type"] == "hook"
+    assert title["x"] == 0.3 and title["y"] == 0.6 and title["fontSize"] == 100
+    assert title["fontFamily"] == "Poppins" and title["color"] == "#ff0000" and title["anchor"] == "left"
+    sub = recipe["overlays"][1]
+    assert sub["text"] == "sub"
+    assert sub["x"] == 0.3 and sub["anchor"] == "left"
+    assert abs(sub["y"] - 0.68) < 1e-6
+    assert sub["fontSize"] == 48
+
+
+def test_build_recipe_hook_style_defaults_backward_compat():
+    recipe = build_recipe(
+        width=1920, height=1080, fps=30, trimmed_duration=1.0,
+        words=[_w("a", 0.0, 0.5)],
+        hook={"title": "H", "subtitle": "", "duration_frames": 90},
+        max_chars=99, max_gap=5.0,
+    )
+    t = recipe["overlays"][0]
+    assert t["x"] == 0.5 and t["y"] == 0.16 and t["fontSize"] == 84 and t["anchor"] == "center"
+
+
 def test_build_recipe_hook_overlay_and_no_card():
     words = [_w("ola", 0.0, 0.5), _w("pessoal", 0.5, 1.0)]
     recipe = build_recipe(

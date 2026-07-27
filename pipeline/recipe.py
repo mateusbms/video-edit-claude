@@ -87,6 +87,12 @@ def build_recipe(
 
     # piso defensivo: 0/negativo/ausente não podem sumir com o overlay de hook
     duration_frames = max(1, hook.get("duration_frames") or 90)
+    hx = hook.get("x", 0.5)
+    hy = hook.get("y", 0.16)
+    hfs = hook.get("fontSize", 84)
+    hff = hook.get("fontFamily", "")
+    hcolor = hook.get("color", "")
+    hanchor = hook.get("anchor", "center")
     hook_overlays = [
         {
             "id": "ov_hook",
@@ -94,8 +100,8 @@ def build_recipe(
             "text": hook["title"],
             "fromFrame": 0,
             "durationInFrames": duration_frames,
-            "x": 0.5, "y": 0.16, "anchor": "center",
-            "fontSize": 84, "color": "", "highlightColor": "", "fontFamily": "",
+            "x": hx, "y": hy, "anchor": hanchor,
+            "fontSize": hfs, "color": hcolor, "highlightColor": "", "fontFamily": hff,
             "enter": "slide-up", "exit": "fade",
             "enterDurationInFrames": 12, "exitDurationInFrames": 12,
         }
@@ -109,8 +115,8 @@ def build_recipe(
                 "text": subtitle,
                 "fromFrame": 6,
                 "durationInFrames": max(1, duration_frames - 6),
-                "x": 0.5, "y": 0.24, "anchor": "center",
-                "fontSize": 40, "color": "", "highlightColor": "", "fontFamily": "",
+                "x": hx, "y": round(hy + 0.08, 6), "anchor": hanchor,
+                "fontSize": round(hfs * 0.48), "color": hcolor, "highlightColor": "", "fontFamily": hff,
                 "enter": "slide-up", "exit": "fade",
                 "enterDurationInFrames": 12, "exitDurationInFrames": 12,
             }

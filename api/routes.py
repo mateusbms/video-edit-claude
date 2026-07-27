@@ -146,6 +146,9 @@ def get_hook(slug: str):
             title=d["title"],
             subtitle=d.get("subtitle", ""),
             duration_frames=d.get("duration_frames", 90),
+            x=d.get("x", 0.5), y=d.get("y", 0.16),
+            fontSize=d.get("fontSize", 84), fontFamily=d.get("fontFamily", ""),
+            color=d.get("color", ""), anchor=d.get("anchor", "center"),
         ).model_dump()
     tpath = job_dir / "transcript.json"
     if tpath.exists():
@@ -156,14 +159,7 @@ def get_hook(slug: str):
 @router.put("/jobs/{slug}/hook")
 def put_hook(slug: str, hook: Hook):
     jobs_root, *_ = _roots()
-    write_json(
-        Path(jobs_root) / slug / "hook.json",
-        {
-            "title": hook.title,
-            "subtitle": hook.subtitle,
-            "duration_frames": hook.duration_frames,
-        },
-    )
+    write_json(Path(jobs_root) / slug / "hook.json", hook.model_dump())
     update_hook_card_frames(slug, jobs_root, hook.duration_frames)
     return {"ok": True}
 
