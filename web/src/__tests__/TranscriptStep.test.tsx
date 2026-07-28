@@ -41,4 +41,33 @@ describe("TranscriptStep progress", () => {
     fireEvent.change(size, { target: { value: "72" } });
     await waitFor(() => expect((api.putCaptionStyle as any)).toHaveBeenCalled());
   });
+
+  it("escala a legenda pela largura do frame-alvo (9x16 = 1080), não por 1920 fixo", async () => {
+    // jsdom devolve clientWidth 0; fingimos um <video> vertical de 304px
+    const spy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(304);
+    try {
+      const api = await import("../api");
+      (api.getJob as any).mockResolvedValueOnce({
+        orientation: "9x16",
+        captionStyle: { fontSize: 92, bottom: 120, color: "", highlightColor: "", fontFamily: "" },
+        brandKitSlug: "",
+      });
+      (api.getTranscript as any).mockResolvedValueOnce([
+        { start: 0, end: 5, text: "oi", words: [{ word: "oi", start: 0, end: 5 }] },
+      ]);
+
+      render(<TranscriptStep {...props} />);
+      const word = await screen.findByText("oi");
+      const p = word.closest("p") as HTMLElement;
+
+      // 92px num canvas de 1080 exibido em 304px => 92 * 304/1080 = 25.896px
+      // (a régua antiga, 1920, daria 92 * 304/1920 = 14.567px)
+      await waitFor(() => {
+        expect(parseFloat(p.style.fontSize)).toBeCloseTo(92 * 304 / 1080, 1);
+      });
+      expect(parseFloat(p.style.fontSize)).not.toBeCloseTo(92 * 304 / 1920, 1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
