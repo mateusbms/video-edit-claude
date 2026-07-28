@@ -36,9 +36,9 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
       const r = await uploadJob(files, localSlug);
       setSlug(r.slug); setProbe(r.probe); setFiles([]);
       // o backend já detectou pelo probe; espelha aqui para o usuário poder trocar
-      const detectada: Orientation =
+      const detected: Orientation =
         r.probe && r.probe.width < r.probe.height ? "9x16" : "16x9";
-      setOrientation(detectada);
+      setOrientation(detected);
     } catch (e: any) {
       setErr(e.message ?? "erro no upload");
     } finally {
@@ -46,7 +46,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     }
   };
 
-  const trocarOrientacao = async (o: Orientation) => {
+  const changeOrientation = async (o: Orientation) => {
     setOrientation(o);
     try { await putOrientation(slug || localSlug, o); }
     catch (e: any) { setErr(e.message ?? "erro ao trocar o formato"); }
@@ -120,7 +120,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
                   <input
                     type="radio" name="orientation" value={o}
                     checked={orientation === o}
-                    onChange={() => trocarOrientacao(o)}
+                    onChange={() => changeOrientation(o)}
                     className="w-4 h-4 accent-emerald-600"
                   />
                   <span>{o === "9x16" ? "9:16 (vertical)" : "16:9 (horizontal)"}</span>

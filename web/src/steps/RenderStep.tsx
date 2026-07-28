@@ -8,14 +8,20 @@ const LABEL: Record<Orientation, string> = { "16x9": "16:9 (1920×1080)", "9x16"
 
 export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
   const [orientation, setOrientation] = useState<Orientation>("16x9");
+  // enquanto a orientação persistida não chega, o default "16x9" pode estar
+  // errado — o botão fica desabilitado para não disparar um render com o
+  // formato/nome de arquivo trocado.
+  const [loadingOrientation, setLoadingOrientation] = useState(true);
   const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ detail: string; log?: string } | null>(null);
 
   useEffect(() => {
+    setLoadingOrientation(true);
     getJob(slug).then((j: any) => { if (j?.orientation) setOrientation(j.orientation); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoadingOrientation(false));
   }, [slug]);
 
   const outName = `${slug}-${orientation}.mp4`;
@@ -43,9 +49,13 @@ export const RenderStep: React.FC<StepProps> = ({ slug, back }) => {
         Para trocar, volte ao passo 1.
       </p>
 
-      <button onClick={render} disabled={busy}
+      <button onClick={render} disabled={busy || loadingOrientation}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
-        {busy ? "Renderizando..." : "Renderizar vídeo"}
+        {busy
+          ? "Renderizando..."
+          : loadingOrientation
+          ? "Carregando..."
+          : `Renderizar ${orientation === "9x16" ? "9:16" : "16:9"}`}
       </button>
 
       {err && (
