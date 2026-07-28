@@ -25,15 +25,17 @@ function mockFetch() {
 }
 
 // Mesma coisa que mockFetch, mas permite sobrescrever o payload de GET /jobs/{slug}
-// (usado para testar o wiring de orientation → zona da legenda).
-function mockFetchWithJob(jobOverrides: any) {
+// (usado para testar o wiring de orientation → zona da legenda) e, opcionalmente,
+// o payload de GET /hook (usado para testar o wiring de orientation → previewScale).
+function mockFetchWithJob(jobOverrides: any, hookOverride?: any) {
   const calls: any[] = [];
   const f = vi.fn(async (url: string, init?: any) => {
     calls.push({ url, init });
     if (url.endsWith("/overlays") && (!init || init.method === "GET" || !init.method))
       return { ok: true, json: async () => [] } as any;
     if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
-    if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+    if (url.endsWith("/hook") && (!init || !init.method))
+      return { ok: true, json: async () => (hookOverride ?? { title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
     if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
       return { ok: true, json: async () => [] } as any;
     if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
@@ -200,5 +202,30 @@ describe("OverlaysStep", () => {
     expect(topPct).toBeCloseTo(expectedWith1920, 3);
     // ...e não com o fallback 1080 antigo (prova que orientation chegou até a zona).
     expect(topPct).not.toBeCloseTo(expectedWith1080Fallback, 1);
+  });
+
+  it("dimensiona o hook pela largura do frame-alvo, não por 1920", async () => {
+    // jsdom devolve clientWidth 0; fingimos um <video> vertical de 304px
+    const spy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(304);
+    try {
+      mockFetchWithJob(
+        {
+          orientation: "9x16",
+          probe: { width: 2160, height: 3840, fps: 30, duration: 10 },
+          captionStyle: { fontSize: 92, bottom: 327, color: "", highlightColor: "", fontFamily: "" },
+        },
+        { title: "HOOK", subtitle: "", duration_frames: 90, fontSize: 158 },
+      );
+
+      render(<OverlaysStep {...props} />);
+      const hook = await screen.findByText("HOOK");
+      // 158px num canvas de 1080 exibido em 304px => 158 * 304/1080 = 44.48px
+      // (a régua antiga, 1920, daria 25.02px)
+      await waitFor(() => {
+        expect(parseFloat((hook as HTMLElement).style.fontSize)).toBeCloseTo(158 * 304 / 1080, 1);
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

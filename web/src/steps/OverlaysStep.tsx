@@ -73,17 +73,18 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
   useEffect(() => () => { if (defsTimer.current) clearTimeout(defsTimer.current); }, []);
 
+  // Os estilos da recipe estão em px do frame de saída; o <video> do preview
+  // é menor. A régua é a LARGURA DO FRAME-ALVO (1080 no vertical, 1920 no
+  // horizontal) — usar 1920 fixo fazia o vertical sair 1,778x maior no render.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-      // escala px do render (canvas 1920) -> preview. Casa com o render 16x9;
-    // no 9x16 (1080) o texto sai proporcionalmente maior que o previsto aqui.
-    const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
+    const update = () => setPreviewScale(previewScaleFor(v.clientWidth, orientation));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(v);
     return () => ro.disconnect();
-  }, []);
+  }, [orientation]);
 
   const frame = Math.round(now * fps);
   const selected = overlays.find((o) => o.id === selectedId) || null;

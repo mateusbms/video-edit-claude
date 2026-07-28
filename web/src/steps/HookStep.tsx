@@ -39,15 +39,18 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
     }).catch(() => {});
   }, [slug]);
 
+  // Os estilos da recipe estão em px do frame de saída; o <video> do preview
+  // é menor. A régua é a LARGURA DO FRAME-ALVO (1080 no vertical, 1920 no
+  // horizontal) — usar 1920 fixo fazia o vertical sair 1,778x maior no render.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
+    const update = () => setPreviewScale(previewScaleFor(v.clientWidth, orientation));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(v);
     return () => ro.disconnect();
-  }, []);
+  }, [orientation]);
 
   useEffect(() => {
     if (!dirty.current) return; // mount / carga do getHook não disparam save

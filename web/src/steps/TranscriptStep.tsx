@@ -3,6 +3,7 @@ import { getTranscript, putTranscript, streamSSE, mediaUrl, putCaptionStyle, put
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { ProgressBar } from "../components/ProgressBar";
 import { BrandKitPicker } from "../components/BrandKitPicker";
+import { previewScaleFor, type Orientation } from "../frame";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
 import { FONTS } from "../fonts";
@@ -19,25 +20,27 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
   const [brandSlug, setBrandSlug] = useState("");
   const [previewScale, setPreviewScale] = useState(1);
+  const [orientation, setOrientation] = useState<Orientation>("16x9");
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
     getJob(slug).then((j: any) => {
       if (j?.captionStyle) setCapStyle(j.captionStyle);
       if (j?.brandKitSlug) setBrandSlug(j.brandKitSlug);
+      if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
   }, [slug]);
 
-  // escala o preview: o estilo é em px do render (largura 1920); o vídeo do preview é menor.
+  // Escala px do frame-alvo -> px de tela do preview.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const update = () => setPreviewScale(v.clientWidth > 0 ? v.clientWidth / 1920 : 1);
+    const update = () => setPreviewScale(previewScaleFor(v.clientWidth, orientation));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(v);
     return () => ro.disconnect();
-  }, [lines]);
+  }, [lines, orientation]);
 
   const saveStyle = (nextStyle: typeof capStyle) => {
     setCapStyle(nextStyle);
