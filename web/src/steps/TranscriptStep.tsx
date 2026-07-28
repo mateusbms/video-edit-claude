@@ -3,6 +3,7 @@ import { getTranscript, putTranscript, streamSSE, mediaUrl, putCaptionStyle, put
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { ProgressBar } from "../components/ProgressBar";
 import { BrandKitPicker } from "../components/BrandKitPicker";
+import { effectiveCaptionStyle } from "../captionStyle";
 import { previewScaleFor, type Orientation } from "../frame";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
@@ -17,7 +18,12 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
+  // capStyle é o estilo CRU do job ("" = segue o brand kit) — é ele que os
+  // controles editam e que volta no PUT. capResolved é o mesmo estilo já
+  // resolvido pelo backend contra o brand kit; só o preview usa, para desenhar
+  // com a mesma fonte do render.
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
+  const [capResolved, setCapResolved] = useState<Partial<typeof capStyle> | null>(null);
   const [brandSlug, setBrandSlug] = useState("");
   const [previewScale, setPreviewScale] = useState(1);
   const [orientation, setOrientation] = useState<Orientation>("16x9");
@@ -26,6 +32,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
     getTranscript(slug).then(setLines).catch(() => {});
     getJob(slug).then((j: any) => {
       if (j?.captionStyle) setCapStyle(j.captionStyle);
+      if (j?.captionStyleResolved) setCapResolved(j.captionStyleResolved);
       if (j?.brandKitSlug) setBrandSlug(j.brandKitSlug);
       if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
@@ -111,7 +118,10 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
             onTimeUpdate={(e) => setNow((e.target as HTMLVideoElement).currentTime)}
             className="max-h-[60vh] max-w-full rounded border border-zinc-800"
           />
-          <CaptionOverlay lines={lines} currentTime={now} style={capStyle} scale={previewScale} />
+          <CaptionOverlay
+            lines={lines} currentTime={now} scale={previewScale}
+            style={effectiveCaptionStyle(capStyle, capResolved)}
+          />
         </div>
       )}
       {lines && (
@@ -148,7 +158,12 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
             value={brandSlug}
             onChange={(s) => {
               setBrandSlug(s);
-              putBrandKit(slug, s).catch(() => {});
+              // a marca nova muda a fonte/cor efetivas da legenda: relê o
+              // resolvido para o preview não ficar com o do kit anterior
+              putBrandKit(slug, s)
+                .then(() => getJob(slug))
+                .then((j: any) => { if (j?.captionStyleResolved) setCapResolved(j.captionStyleResolved); })
+                .catch(() => {});
             }}
           />
         </div>

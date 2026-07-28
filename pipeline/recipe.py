@@ -31,6 +31,39 @@ def group_words_into_lines(words: list[dict], max_chars: int = 24, max_gap: floa
     ]
 
 
+def brand_of_kit(kit_slug: str) -> dict | None:
+    """Cores e fontes do brand kit, no formato que build_recipe espera em `brand`.
+
+    Fonte única para o render (stage_recipe) e para o preview (get_state).
+    """
+    if not kit_slug:
+        return None
+    from api.brand_kits_store import load_kit
+    kit = load_kit(kit_slug)
+    if not kit:
+        return None
+    return {"colors": kit.colors.model_dump(), "fonts": kit.fonts.model_dump()}
+
+
+def resolve_caption_style(style: dict | None, brand: dict | None) -> dict:
+    """Estilo de legenda efetivo: escolha do usuário > brand kit > padrão.
+
+    O preview (api.jobs.get_state) usa exatamente esta função, senão ele
+    desenharia com uma fonte e o render com outra — métricas diferentes,
+    quebra de linha diferente.
+    """
+    cs = style or {}
+    bcolors = (brand or {}).get("colors", {})
+    bfonts = (brand or {}).get("fonts", {})
+    return {
+        "fontSize": cs["fontSize"] if cs.get("fontSize") is not None else 48,
+        "bottom": cs["bottom"] if cs.get("bottom") is not None else 120,
+        "color": cs.get("color") or bcolors.get("foreground") or "#ffffff",
+        "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or "#22c55e",
+        "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
+    }
+
+
 def _formats_for(orientation: str) -> dict:
     """Só a orientação escolhida — o job renderiza um formato único."""
     w, h = frame_size(orientation)
@@ -84,16 +117,7 @@ def build_recipe(
 
     orientation = resolve_orientation(orientation, {"width": width, "height": height})
 
-    cs = caption_style or {}
-    bcolors = (brand or {}).get("colors", {})
-    bfonts = (brand or {}).get("fonts", {})
-    resolved_caption_style = {
-        "fontSize": cs["fontSize"] if cs.get("fontSize") is not None else 48,
-        "bottom": cs["bottom"] if cs.get("bottom") is not None else 120,
-        "color": cs.get("color") or bcolors.get("foreground") or "#ffffff",
-        "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or "#22c55e",
-        "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
-    }
+    resolved_caption_style = resolve_caption_style(caption_style, brand)
 
     # piso defensivo: 0/negativo/ausente não podem sumir com o overlay de hook
     duration_frames = max(1, hook.get("duration_frames") or 90)

@@ -136,7 +136,8 @@ class JobState(BaseModel):
     has_recipe: bool = False
     has_render_16x9: bool = False
     has_render_9x16: bool = False
-    captionStyle: dict | None = None
+    captionStyle: dict | None = None  # cru, como está no job.config (=> "" segue a marca)
+    captionStyleResolved: dict | None = None  # com o brand kit aplicado (o que o render usa)
     brandKitSlug: str = ""
     orientation: str = "16x9"  # efetiva (já resolvida); nunca vazia
 

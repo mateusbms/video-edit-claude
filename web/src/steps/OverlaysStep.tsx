@@ -9,6 +9,7 @@ import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
 import { hookToOverlays } from "../overlayHook";
 import { captionZone, overlapsInTime } from "../overlayGeom";
+import { effectiveCaptionStyle } from "../captionStyle";
 import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import { suggestionToOverlay } from "../suggestions";
 import type { Suggestion, SuggestDefaults } from "../suggestions";
@@ -63,7 +64,8 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
     getJob(slug).then((j: any) => {
       if (j?.probe?.fps) setFps(j.probe.fps);
       if (j?.probe?.duration) setDurationSec(j.probe.duration);
-      if (j?.captionStyle) setCapStyle(j.captionStyle);
+      // resolvido = com o brand kit aplicado, igual ao que o render vai usar
+      if (j?.captionStyle) setCapStyle(effectiveCaptionStyle(j.captionStyle, j.captionStyleResolved));
       if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
     getSuggestions(slug).then(setSuggestions).catch(() => {});

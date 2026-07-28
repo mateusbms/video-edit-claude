@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FRAME_SIZES, resolve_orientation
+from pipeline.recipe import brand_of_kit, resolve_caption_style
 from api.models import CutParams, Hook, JobState, ProbeOut
 
 
@@ -42,6 +43,11 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         "highlightColor": job.config.caption_highlight,
         "fontFamily": job.config.caption_font,
     }
+    # o que o render vai realmente usar (brand kit já aplicado). O preview
+    # precisa disso: com a fonte errada a quebra de linha da legenda diverge.
+    state.captionStyleResolved = resolve_caption_style(
+        state.captionStyle, brand_of_kit(job.config.brand_kit_slug)
+    )
     state.brandKitSlug = job.config.brand_kit_slug
     state.orientation = resolve_orientation(
         job.config.orientation,

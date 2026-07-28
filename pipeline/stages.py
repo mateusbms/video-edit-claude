@@ -4,7 +4,7 @@ from pipeline.job import Job, write_json, load_json
 from pipeline.probe import probe_video
 from pipeline.silence import detect_silences, compute_kept_segments, cut_segments, invert_ranges, build_scale_filter
 from pipeline.transcribe import transcribe_audio
-from pipeline.recipe import build_recipe
+from pipeline.recipe import brand_of_kit, build_recipe
 from pipeline.concat import concat_videos
 
 
@@ -79,12 +79,7 @@ def stage_recipe(job: Job) -> None:
         trimmed_frames_actual = tp.get("nb_frames")
     else:
         trimmed_duration = words[-1]["end"] if words else 0.0
-    brand = None
-    if job.config.brand_kit_slug:
-        from api.brand_kits_store import load_kit
-        kit = load_kit(job.config.brand_kit_slug)
-        if kit:
-            brand = {"colors": kit.colors.model_dump(), "fonts": kit.fonts.model_dump()}
+    brand = brand_of_kit(job.config.brand_kit_slug)
     manual_overlays = None
     overlays_path = job.dir / "overlays.json"
     if overlays_path.exists():

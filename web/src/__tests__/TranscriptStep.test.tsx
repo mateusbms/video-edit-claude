@@ -42,6 +42,31 @@ describe("TranscriptStep progress", () => {
     await waitFor(() => expect((api.putCaptionStyle as any)).toHaveBeenCalled());
   });
 
+  it("desenha a legenda com a fonte que o brand kit resolveu no backend", async () => {
+    // caption_font vazio + kit com fonts.body "Poppins": o render usa Poppins,
+    // então o preview também precisa usar — fonte diferente quebra linha em
+    // ponto diferente, que é o bug que o CaptionOverlay existe para evitar.
+    const api = await import("../api");
+    (api.getJob as any).mockResolvedValueOnce({
+      orientation: "16x9",
+      captionStyle: { fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" },
+      captionStyleResolved: { fontSize: 48, bottom: 120, color: "#eeeeee", highlightColor: "#ff0055", fontFamily: "Poppins" },
+      brandKitSlug: "marca",
+    });
+    (api.getTranscript as any).mockResolvedValueOnce([
+      { start: 0, end: 5, text: "oi", words: [{ word: "oi", start: 0, end: 5 }] },
+    ]);
+
+    render(<TranscriptStep {...props} />);
+    const p = (await screen.findByText("oi")).closest("p") as HTMLElement;
+    await waitFor(() => expect(p.style.fontFamily).toMatch(/Poppins/));
+
+    // e o controle continua mostrando o valor CRU (vazio => "Inter" na lista),
+    // para um ajuste de tamanho não congelar a fonte da marca no job
+    const select = await screen.findByLabelText(/fonte da legenda/i);
+    expect((select as HTMLSelectElement).value).toBe("Inter");
+  });
+
   it("escala a legenda pela largura do frame-alvo (9x16 = 1080), não por 1920 fixo", async () => {
     // jsdom devolve clientWidth 0; fingimos um <video> vertical de 304px
     const spy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(304);

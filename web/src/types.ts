@@ -44,6 +44,9 @@ export type Overlay = {
   maxWidthPct?: number;
 };
 
+export type { CaptionStyle } from "./captionStyle";
+import type { CaptionStyle } from "./captionStyle";
+
 export type CutSegment = { start: number; end: number };
 
 export type CutResult = {
@@ -63,6 +66,11 @@ export type JobState = {
   has_render_16x9: boolean;
   has_render_9x16: boolean;
   orientation: "16x9" | "9x16";
+  // cru (do job.config; "" = segue a marca) e resolvido (com o brand kit
+  // aplicado, que é o que o render vai usar)
+  captionStyle?: CaptionStyle;
+  captionStyleResolved?: CaptionStyle;
+  brandKitSlug?: string;
 };
 
 export type SSEEvent =

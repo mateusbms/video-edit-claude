@@ -4,6 +4,7 @@ import { CaptionOverlay } from "../components/CaptionOverlay";
 import { OverlayPreview } from "../components/OverlayPreview";
 import { hookToOverlays } from "../overlayHook";
 import { captionZone } from "../overlayGeom";
+import { effectiveCaptionStyle } from "../captionStyle";
 import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import type { Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
@@ -33,7 +34,9 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
     getHook(slug).then((h: any) => setHook({ ...DEF, ...h })).catch(() => {});
     getTranscript(slug).then(setLines).catch(() => {});
     getJob(slug).then((j: any) => {
-      if (j?.captionStyle) setCapStyle(j.captionStyle);
+      // o resolvido (brand kit aplicado) é o que o render usa — o preview
+      // precisa da mesma fonte para quebrar linha no mesmo lugar
+      if (j?.captionStyle) setCapStyle(effectiveCaptionStyle(j.captionStyle, j.captionStyleResolved));
       if (j?.probe?.fps) setFps(j.probe.fps);
       if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
