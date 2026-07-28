@@ -162,6 +162,14 @@ def test_put_overlays_rejects_invalid_hex(client, sample_mp4):
     assert r.status_code == 422
 
 
+def test_overlays_accept_max_width_pct(client, sample_mp4):
+    _upload(client, sample_mp4, "mw1")
+    items = [{"id": "ov1", "text": "x", "fromFrame": 0, "durationInFrames": 30, "maxWidthPct": 55}]
+    assert client.put("/api/jobs/mw1/overlays", json=items).status_code == 200
+    got = client.get("/api/jobs/mw1/overlays").json()
+    assert got[0]["maxWidthPct"] == 55
+
+
 def test_hook_put_get_persists_style(client, sample_mp4):
     _upload(client, sample_mp4, "hk1")
     body = {"title": "T", "subtitle": "", "duration_frames": 90,

@@ -51,6 +51,7 @@ export const zOverlay = z.object({
   y: z.number().default(0.18),
   anchor: z.enum(["center", "left", "right"]).default("center"),
   fontSize: z.number().default(64),
+  maxWidthPct: z.number().default(80),
   color: z.string().default(""), // "" => usa theme.colors.foreground
   highlightColor: z.string().default(""),
   fontFamily: z.string().default(""), // "" => usa theme.fonts.heading

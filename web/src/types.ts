@@ -40,6 +40,7 @@ export type Overlay = {
   exit: OverlayAnim;
   enterDurationInFrames: number;
   exitDurationInFrames: number;
+  maxWidthPct?: number;
 };
 
 export type CutSegment = { start: number; end: number };

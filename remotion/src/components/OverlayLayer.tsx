@@ -40,7 +40,7 @@ export const OverlayLayer: React.FC<{ overlays: TOverlay[] }> = ({ overlays }) =
               fontSize: ov.fontSize,
               lineHeight: 1.15,
               textAlign,
-              maxWidth: "80%",
+              maxWidth: `${ov.maxWidthPct ?? 80}%`,
               whiteSpace: "pre-wrap",
               textShadow: "0 4px 24px rgba(0,0,0,0.7)",
             }}

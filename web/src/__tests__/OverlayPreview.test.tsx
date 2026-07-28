@@ -29,6 +29,13 @@ describe("OverlayPreview", () => {
     expect(onSelect).toHaveBeenCalledWith("ov_a");
   });
 
+  it("aplica maxWidthPct como maxWidth", () => {
+    render(<OverlayPreview overlays={[{ ...ov, maxWidthPct: 50 }]} frame={20} scale={1}
+      selectedId={null} onSelect={() => {}} onMove={() => {}} />);
+    const el = screen.getByText("Oferta");
+    expect(el.style.maxWidth).toBe("50%");
+  });
+
   it("só chama onMove durante o arraste (após pointerDown)", () => {
     const onMove = vi.fn();
     const { container } = render(

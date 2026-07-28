@@ -93,6 +93,7 @@ class OverlayParams(BaseModel):
     y: float = 0.18
     anchor: Literal["center", "left", "right"] = "center"
     fontSize: int = 64
+    maxWidthPct: int = 80
     color: HexOrEmpty = ""
     highlightColor: HexOrEmpty = ""
     fontFamily: str = ""

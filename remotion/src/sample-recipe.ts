@@ -30,6 +30,7 @@ export const sampleRecipe: TEditRecipe = {
       y: 0.16,
       anchor: "center",
       fontSize: 84,
+      maxWidthPct: 80,
       color: "",
       highlightColor: "",
       fontFamily: "",

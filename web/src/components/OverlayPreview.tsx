@@ -53,7 +53,7 @@ export const OverlayPreview: React.FC<{
     fontSize: ov.fontSize * scale,
     lineHeight: 1.15,
     textAlign: textAlign(ov),
-    maxWidth: "80%",
+    maxWidth: `${ov.maxWidthPct ?? 80}%`,
     whiteSpace: "pre-wrap",
     textShadow: "0 4px 24px rgba(0,0,0,0.7)",
     outline,
