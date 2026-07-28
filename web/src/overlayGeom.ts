@@ -14,10 +14,11 @@ export function clientToFraction(
 
 // Zona (fração da altura) onde a legenda fica, para desenhar como guia de colisão.
 // Aproximação: legenda ancorada no rodapé, altura ~1.6x o fontSize.
-// refHeight é a altura do frame-alvo (1080 no 16x9, 1920 no 9x16).
+// refHeight é a altura do frame-alvo, que vem de frameSize(orientation) — sem
+// default aqui, para não guardar um tamanho canônico fora de frame.ts.
 export function captionZone(
   style: { bottom: number; fontSize: number },
-  refHeight = 1080,
+  refHeight: number,
 ): { top: number; bottom: number } {
   const hPx = style.fontSize * 1.6;
   const bottom = clamp01(1 - style.bottom / refHeight);

@@ -69,7 +69,7 @@ def read_job(slug: str):
 
 
 @router.put("/jobs/{slug}/orientation")
-def set_orientation(slug: str, params: OrientationParams):
+def put_orientation(slug: str, params: OrientationParams):
     jobs_root, *_ = _roots()
     update_orientation(slug, jobs_root, params.orientation)
     return {"ok": True, "orientation": get_state(slug, jobs_root).orientation}

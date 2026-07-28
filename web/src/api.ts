@@ -105,8 +105,9 @@ export async function runRecipe(slug: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/recipe`, { method: "POST" }));
 }
 
-export function stillUrl(slug: string, frame: number, format: "main16x9" | "vertical9x16"): string {
-  return `${BASE}/jobs/${slug}/still?frame=${frame}&format=${format}`;
+// o formato vem da orientação do job, não da query — GET /still não aceita mais `format`
+export function stillUrl(slug: string, frame: number): string {
+  return `${BASE}/jobs/${slug}/still?frame=${frame}`;
 }
 
 export function fileUrl(slug: string, name: string): string {

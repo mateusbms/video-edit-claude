@@ -1,5 +1,3 @@
-import pytest
-
 from pipeline.orientation import (
     FORMAT_KEYS,
     FRAME_SIZES,

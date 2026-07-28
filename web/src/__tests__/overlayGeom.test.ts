@@ -15,13 +15,13 @@ describe("clientToFraction", () => {
 
 describe("captionZone", () => {
   it("faixa perto do rodapé para estilo típico", () => {
-    const z = captionZone({ bottom: 120, fontSize: 48 }); // refHeight 1080
+    const z = captionZone({ bottom: 120, fontSize: 48 }, frameSize("16x9").height);
     expect(z.bottom).toBeCloseTo(1 - 120 / 1080, 6);
     expect(z.top).toBeCloseTo(1 - (120 + 48 * 1.6) / 1080, 6);
     expect(z.top).toBeLessThan(z.bottom);
   });
   it("clampa em [0,1]", () => {
-    const z = captionZone({ bottom: 5000, fontSize: 48 });
+    const z = captionZone({ bottom: 5000, fontSize: 48 }, frameSize("16x9").height);
     expect(z.top).toBe(0);
     expect(z.bottom).toBe(0);
   });
