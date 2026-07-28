@@ -70,7 +70,7 @@ export const OverlayPreview: React.FC<{
 
   return (
     <div ref={wrapRef} className="absolute inset-0 pointer-events-none"
-      onPointerMove={onPointerMove} onPointerUp={endDrag}>
+      onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
       {captionZone && (
         <div aria-hidden className="absolute left-0 right-0 pointer-events-none"
           style={{
