@@ -126,4 +126,25 @@ describe("OverlaysStep", () => {
     expect(screen.queryByText("Aplica isto")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("Aplica isto")).not.toBeInTheDocument();
   });
+
+  it("avisa quando dois textos se sobrepõem no tempo", async () => {
+    render(<OverlaysStep {...props} />);
+    const addBtn = await screen.findByRole("button", { name: /texto/i });
+    fireEvent.click(addBtn);
+    fireEvent.click(addBtn);
+    expect((await screen.findAllByLabelText(/sobreposição/i)).length).toBeGreaterThan(0);
+  });
+
+  it("nudge avança o início do texto selecionado", async () => {
+    render(<OverlaysStep {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    fireEvent.click(await screen.findByLabelText(/avançar início/i));
+    expect((await screen.findAllByText("0.1s")).length).toBeGreaterThan(0);
+  });
+
+  it("tem o slider de largura no painel do selecionado", async () => {
+    render(<OverlaysStep {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    expect(await screen.findByLabelText(/^largura$/i)).toBeInTheDocument();
+  });
 });

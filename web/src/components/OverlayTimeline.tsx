@@ -8,7 +8,8 @@ export const OverlayTimeline: React.FC<{
   selectedId: string | null;
   onSeekFrame: (frame: number) => void;
   onSelect: (id: string) => void;
-}> = ({ overlays, context = [], totalFrames, currentFrame, selectedId, onSeekFrame, onSelect }) => {
+  warnIds?: Set<string>;
+}> = ({ overlays, context = [], totalFrames, currentFrame, selectedId, onSeekFrame, onSelect, warnIds }) => {
   const has = totalFrames > 0;
   const leftPct = (f: number) => (has ? `${Math.max(0, Math.min(100, (f / totalFrames) * 100))}%` : "0%");
   const widthPct = (f: number) => (has ? `${Math.max(0, Math.min(100, (f / totalFrames) * 100))}%` : "0%");
@@ -32,7 +33,8 @@ export const OverlayTimeline: React.FC<{
         <button key={ov.id} aria-label={`marcador ${ov.text}`}
           onClick={(e) => { e.stopPropagation(); onSelect(ov.id); onSeekFrame(ov.fromFrame); }}
           className={`absolute bottom-1 h-8 rounded text-left px-1 text-xs truncate ${
-            ov.id === selectedId ? "bg-emerald-600 text-white" : "bg-emerald-800/70 text-emerald-100"}`}
+            warnIds?.has(ov.id) ? "bg-amber-600/80 text-white"
+            : ov.id === selectedId ? "bg-emerald-600 text-white" : "bg-emerald-800/70 text-emerald-100"}`}
           style={{ left: leftPct(ov.fromFrame), width: widthPct(ov.durationInFrames) }}>
           {ov.text}
         </button>

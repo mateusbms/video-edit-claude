@@ -15,7 +15,8 @@ export const OverlayPreview: React.FC<{
   readOnlyOverlays?: Overlay[];
   captionZone?: Zone;
   playing?: boolean;
-}> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone, playing = false }) => {
+  timeOverlapIds?: Set<string>;
+}> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone, playing = false, timeOverlapIds }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragId = useRef<string | null>(null);
 
@@ -92,8 +93,10 @@ export const OverlayPreview: React.FC<{
           const opacity = freeze ? 1 : p.opacity;
           const ty = freeze ? 0 : p.translateY;
           const sc = freeze ? 1 : p.scale;
+          const timeOverlap = timeOverlapIds?.has(ov.id) ?? false;
           const colliding = !!captionZone && overlapsCaption(ov, captionZone);
-          const outline = colliding ? "2px solid #eab308" : isSel ? "2px solid #22c55e" : undefined;
+          const warn = colliding || timeOverlap;
+          const outline = warn ? "2px solid #eab308" : isSel ? "2px solid #22c55e" : undefined;
           return (
             <div key={ov.id} onPointerDown={(e) => onPointerDownBlock(e, ov.id)}
               className="absolute pointer-events-auto cursor-move select-none"
@@ -101,6 +104,7 @@ export const OverlayPreview: React.FC<{
               title={colliding ? "pode encavalar a legenda" : undefined}>
               {ov.text}
               {colliding && <span aria-label="aviso de colisão" className="ml-1">⚠</span>}
+              {timeOverlap && <span aria-label="aviso de sobreposição" className="ml-1">⚠</span>}
             </div>
           );
         })}

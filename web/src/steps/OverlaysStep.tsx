@@ -8,7 +8,7 @@ import { OverlayTimeline } from "../components/OverlayTimeline";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
 import { hookToOverlays } from "../overlayHook";
-import { captionZone } from "../overlayGeom";
+import { captionZone, overlapsInTime } from "../overlayGeom";
 import { suggestionToOverlay } from "../suggestions";
 import type { Suggestion, SuggestDefaults } from "../suggestions";
 import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
@@ -81,6 +81,14 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const frame = Math.round(now * fps);
   const selected = overlays.find((o) => o.id === selectedId) || null;
 
+  const overlappingIds = (() => {
+    const s = new Set<string>();
+    for (let i = 0; i < overlays.length; i++)
+      for (let j = i + 1; j < overlays.length; j++)
+        if (overlapsInTime(overlays[i], overlays[j])) { s.add(overlays[i].id); s.add(overlays[j].id); }
+    return s;
+  })();
+
   const patch = (id: string, p: Partial<Overlay>) =>
     setOverlays((list) => list.map((o) => (o.id === id ? { ...o, ...p } : o)));
 
@@ -151,6 +159,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <h2 className="text-xl font-semibold">5. Textos</h2>
       <p className="text-sm text-zinc-400">
         Adicione blocos de texto sobre o vídeo. Recortar o vídeo depois (passo Cortes) remove os textos manuais.
+        Arraste para mover; use Largura para a quebra de linha.
       </p>
 
       <div className="relative w-fit mx-auto">
@@ -175,6 +184,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           onSelect={setSelectedId}
           onMove={(id, x, y) => patch(id, { x, y })}
           playing={playing}
+          timeOverlapIds={overlappingIds}
         />
       </div>
 
@@ -186,6 +196,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onSeekFrame={(f) => { const v = videoRef.current; if (v) v.currentTime = f / fps; }}
+        warnIds={overlappingIds}
       />
 
       <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm grid grid-cols-4 gap-3">
@@ -264,6 +275,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
                 />
               </button>
               <span className="text-xs text-zinc-500">{(o.fromFrame / fps).toFixed(1)}s</span>
+              {overlappingIds.has(o.id) && <span aria-label="aviso de sobreposição" className="text-amber-400">⚠</span>}
               <button aria-label={`remover ${o.id}`} onClick={() => removeOverlay(o.id)} className="text-red-400 px-2">remover</button>
             </li>
           );
@@ -273,9 +285,13 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       {selected && (
         <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">Início (s)
-            <input type="number" step={0.1} min={0} value={startSec.toFixed(1)}
-              onChange={(e) => setStartSec(Number(e.target.value))}
-              className="bg-zinc-800 rounded px-2 py-1" />
+            <div className="flex items-center gap-1">
+              <button aria-label="recuar início" onClick={() => selected && patch(selected.id, { fromFrame: Math.max(0, selected.fromFrame - 3) })} className="px-2 bg-zinc-800 rounded">−</button>
+              <input type="number" step={0.1} min={0} value={startSec.toFixed(1)}
+                onChange={(e) => setStartSec(Number(e.target.value))}
+                className="bg-zinc-800 rounded px-2 py-1 flex-1" />
+              <button aria-label="avançar início" onClick={() => selected && patch(selected.id, { fromFrame: selected.fromFrame + 3 })} className="px-2 bg-zinc-800 rounded">+</button>
+            </div>
           </label>
           <label className="flex flex-col gap-1">Fim (s)
             <input type="number" step={0.1} min={0} value={endSec.toFixed(1)}
@@ -287,6 +303,10 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
           <label className="flex flex-col gap-1">Tamanho
             <input aria-label="tamanho" type="range" min={24} max={160} value={selected.fontSize}
               onChange={(e) => patch(selected.id, { fontSize: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">Largura
+            <input aria-label="largura" type="range" min={20} max={100} value={selected.maxWidthPct ?? 80}
+              onChange={(e) => patch(selected.id, { maxWidthPct: Number(e.target.value) })} />
           </label>
           <label className="flex flex-col gap-1">Cor
             <input aria-label="cor" type="color" value={selected.color || "#ffffff"}
