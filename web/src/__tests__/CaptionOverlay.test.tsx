@@ -83,4 +83,16 @@ describe("paridade com o CaptionLayer do render", () => {
     expect((screen.getByText("mundo") as HTMLElement).style.transform).toBe("scale(1.08)");
     expect((screen.getByText("olá") as HTMLElement).style.transform).toBe("scale(1)");
   });
+
+  it("esconde a legenda de leitor de tela (palavras sem espaço real no DOM)", () => {
+    // As palavras são separadas só por marginRight (CSS), sem caractere " " no
+    // DOM — textContent vira "olámundo", colado. Sem aria-hidden, leitor de
+    // tela anunciaria isso como se fosse uma palavra só. O wrapper precisa
+    // ficar marcado como oculto para tecnologia assistiva.
+    const { container } = render(
+      <CaptionOverlay lines={lines as any} currentTime={0.2} style={style} scale={0.5} />
+    );
+    const wrap = container.querySelector("div")!;
+    expect(wrap.getAttribute("aria-hidden")).toBe("true");
+  });
 });

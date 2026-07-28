@@ -19,7 +19,13 @@ export const CaptionOverlay: React.FC<{
   const color = style?.color || "#ffffff";
   const highlight = style?.highlightColor || "#22c55e";
   return (
+    // aria-hidden: esta legenda é uma sobreposição visual do preview sobre o
+    // <video>; o texto editável de verdade vive no passo de transcrição. Como
+    // as palavras aqui são separadas só por marginRight (sem espaço real no
+    // DOM, para bater com o CaptionLayer), expor isto a leitor de tela leria
+    // as palavras coladas ("olámundo") — pior que não anunciar nada.
     <div className="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none"
+      aria-hidden="true"
       style={{ marginBottom: style ? style.bottom * scale : undefined }}>
       <p
         className="text-center"
