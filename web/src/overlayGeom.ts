@@ -28,3 +28,31 @@ export function captionZone(
 export function overlapsCaption(o: { y: number }, zone: { top: number; bottom: number }): boolean {
   return o.y >= zone.top && o.y <= zone.bottom;
 }
+
+// true se as janelas de tempo [fromFrame, fromFrame+durationInFrames) de dois overlays se cruzam.
+export function overlapsInTime(
+  a: { fromFrame: number; durationInFrames: number },
+  b: { fromFrame: number; durationInFrames: number },
+): boolean {
+  return a.fromFrame < b.fromFrame + b.durationInFrames &&
+         b.fromFrame < a.fromFrame + a.durationInFrames;
+}
+
+// Snapping de alinhamento durante drag: encaixa x/y no alvo mais próximo dentro do limiar
+// e reporta as guias (linhas) resultantes para desenho.
+export function snapPosition(
+  x: number, y: number, targetsX: number[], targetsY: number[], threshold = 0.012,
+): { x: number; y: number; guideX: number | null; guideY: number | null } {
+  const nearest = (v: number, ts: number[]) => {
+    let best: number | null = null;
+    let bestD = threshold;
+    for (const t of ts) {
+      const d = Math.abs(v - t);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  };
+  const gx = nearest(x, targetsX);
+  const gy = nearest(y, targetsY);
+  return { x: gx ?? x, y: gy ?? y, guideX: gx, guideY: gy };
+}
