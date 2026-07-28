@@ -81,7 +81,12 @@ export const zEditRecipe = z.object({
   segments: z.array(zSegment),
   captions: z.array(zCaption),
   overlays: z.array(zOverlay),
-  formats: z.object({ main16x9: zFormat, vertical9x16: zFormat }),
+  // Um job tem uma orientação só, então a recipe nova traz UMA chave aqui.
+  // Recipes antigas (geradas antes disso) trazem as duas e continuam válidas.
+  // .partial() em vez de z.record: mantém os nomes das chaves no tipo, então
+  // um typo vira erro de compilação e quem indexa é obrigado a tratar a
+  // ausência — que é justamente o caso "recipe de outra orientação".
+  formats: z.object({ main16x9: zFormat, vertical9x16: zFormat }).partial(),
   captionStyle: zCaptionStyle.optional(),
 });
 

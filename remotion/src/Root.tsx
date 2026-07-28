@@ -3,19 +3,11 @@ import { Main16x9 } from "./Main16x9";
 import { Vertical9x16 } from "./Vertical9x16";
 import { AnimatedRoot } from "./animated/AnimatedRoot";
 import { zEditRecipe, AnimatedRecipeSchema, type TEditRecipe } from "./schema";
-import { totalDuration } from "./timeline-utils";
+import { formatMetadata, type FormatKey } from "./recipe-metadata";
 import { sampleRecipe, defaultAnimatedRecipe16x9, defaultAnimatedRecipe9x16 } from "./sample-recipe";
 
-const calc = (format: "main16x9" | "vertical9x16") => ({ props }: { props: TEditRecipe }) => {
-  const recipe = zEditRecipe.parse(props);
-  const f = recipe.formats[format];
-  return {
-    durationInFrames: Math.max(1, totalDuration(recipe.segments)),
-    fps: recipe.fps,
-    width: f.width,
-    height: f.height,
-  };
-};
+const calc = (format: FormatKey) => ({ props }: { props: TEditRecipe }) =>
+  formatMetadata(zEditRecipe.parse(props), format);
 
 export const RemotionRoot: React.FC = () => {
   return (
