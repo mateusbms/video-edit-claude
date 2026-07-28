@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clientToFraction, captionZone, overlapsCaption, overlapsInTime, snapPosition } from "../overlayGeom";
+import { captionRefHeight, clientToFraction, captionZone, overlapsCaption, overlapsInTime, snapPosition } from "../overlayGeom";
 
 describe("clientToFraction", () => {
   const rect = { left: 100, top: 50, width: 400, height: 200 } as DOMRect;
@@ -23,6 +23,39 @@ describe("captionZone", () => {
     const z = captionZone({ bottom: 5000, fontSize: 48 });
     expect(z.top).toBe(0);
     expect(z.bottom).toBe(0);
+  });
+});
+
+describe("captionRefHeight", () => {
+  it("16:9 dá 1080 (canvas do render)", () => {
+    expect(captionRefHeight({ width: 1920, height: 1080 })).toBeCloseTo(1080, 6);
+    expect(captionRefHeight({ width: 1280, height: 720 })).toBeCloseTo(1080, 6);
+  });
+  it("vertical 9:16 dá a altura proporcional, não 1080", () => {
+    expect(captionRefHeight({ width: 2160, height: 3840 })).toBeCloseTo(3413.333, 3);
+  });
+  it("sem probe (ou dimensão inválida) cai no fallback 1080", () => {
+    expect(captionRefHeight(undefined)).toBe(1080);
+    expect(captionRefHeight({ width: 0, height: 1080 })).toBe(1080);
+  });
+});
+
+describe("captionZone com refHeight do vídeo", () => {
+  // A faixa tem que cair onde o CaptionOverlay desenha a legenda:
+  // marginBottom = bottom * (larguraPreview / 1920), como fração da altura do preview.
+  const overlayBottomFraction = (bottom: number, w: number, h: number) =>
+    1 - (bottom * (w / 1920)) / (w * (h / w));
+
+  it("bate com o CaptionOverlay num vídeo vertical", () => {
+    const probe = { width: 2160, height: 3840 };
+    const z = captionZone({ bottom: 327, fontSize: 92 }, captionRefHeight(probe));
+    expect(z.bottom).toBeCloseTo(overlayBottomFraction(327, probe.width, probe.height), 6);
+  });
+
+  it("continua batendo em 16:9", () => {
+    const probe = { width: 1280, height: 720 };
+    const z = captionZone({ bottom: 120, fontSize: 48 }, captionRefHeight(probe));
+    expect(z.bottom).toBeCloseTo(overlayBottomFraction(120, probe.width, probe.height), 6);
   });
 });
 
