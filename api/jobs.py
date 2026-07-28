@@ -3,6 +3,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from pipeline.job import init_job, load_json, write_json
+from pipeline.orientation import FRAME_SIZES, resolve_orientation
 from api.models import CutParams, Hook, JobState, ProbeOut
 
 
@@ -42,6 +43,10 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         "fontFamily": job.config.caption_font,
     }
     state.brandKitSlug = job.config.brand_kit_slug
+    state.orientation = resolve_orientation(
+        job.config.orientation,
+        probe.model_dump() if probe else None,
+    )
     return state
 
 
@@ -83,6 +88,15 @@ def update_caption_style(slug: str, jobs_root: Path, style) -> None:
 def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
     job = init_job(jobs_root, slug)
     job.config.brand_kit_slug = kit_slug
+    write_json(job.dir / "job.config.json", asdict(job.config))
+
+
+def update_orientation(slug: str, jobs_root: Path, orientation: str) -> None:
+    """Grava a orientação escolhida. "" volta ao auto-detectar pelo probe."""
+    if orientation != "" and orientation not in FRAME_SIZES:
+        raise ValueError(f"orientação inválida: {orientation!r}")
+    job = init_job(jobs_root, slug)
+    job.config.orientation = orientation
     write_json(job.dir / "job.config.json", asdict(job.config))
 
 

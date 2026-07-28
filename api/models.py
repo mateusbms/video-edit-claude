@@ -139,6 +139,7 @@ class JobState(BaseModel):
     has_render_9x16: bool = False
     captionStyle: dict | None = None
     brandKitSlug: str = ""
+    orientation: str = "16x9"  # efetiva (já resolvida); nunca vazia
 
 
 ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]

@@ -20,6 +20,7 @@ class JobConfig:
     caption_color: str = ""
     caption_highlight: str = ""
     caption_font: str = ""
+    orientation: str = ""  # "" = auto (deriva do probe); "16x9" | "9x16" = escolha do usuário
 
 
 @dataclass
