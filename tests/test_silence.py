@@ -10,6 +10,7 @@ from pipeline.silence import (
     build_select_expr,
     detect_silences,
     invert_ranges,
+    build_scale_filter,
 )
 from pipeline.job import init_job, write_json
 from pipeline.stages import stage_cut
@@ -55,6 +56,29 @@ def test_compute_kept_segments_drops_tiny_segments():
 def test_build_select_expr_joins_segments():
     expr = build_select_expr([Segment(0.0, 2.0), Segment(3.5, 10.0)])
     assert expr == "between(t,0.000,2.000)+between(t,3.500,10.000)"
+
+
+def test_build_scale_filter_downscales_4k_vertical():
+    assert build_scale_filter(2160, 3840) == "scale=1080:1920"
+
+
+def test_build_scale_filter_downscales_4k_landscape():
+    assert build_scale_filter(3840, 2160) == "scale=1920:1080"
+
+
+def test_build_scale_filter_none_when_within_limit():
+    assert build_scale_filter(1920, 1080) is None
+    assert build_scale_filter(1080, 1920) is None
+
+
+def test_build_scale_filter_never_upscales():
+    assert build_scale_filter(1280, 720) is None
+
+
+def test_build_scale_filter_dims_are_even():
+    s = build_scale_filter(1234, 4000)
+    w, h = (int(x) for x in s.removeprefix("scale=").split(":"))
+    assert w % 2 == 0 and h % 2 == 0 and h == 1920
 
 
 def test_invert_ranges_middle():

@@ -75,6 +75,23 @@ def build_select_expr(segments: list[Segment]) -> str:
     return "+".join(f"between(t,{s.start:.3f},{s.end:.3f})" for s in segments)
 
 
+def build_scale_filter(width: int, height: int, max_long_edge: int = 1920) -> str | None:
+    """Filtro ffmpeg 'scale=W:H' pra caber o lado maior em max_long_edge (só reduz).
+
+    Preserva aspecto/orientação e garante dimensões pares (exigência do H.264).
+    Retorna None quando não precisa reduzir (não amplia vídeos menores).
+    """
+    long_edge = max(width, height)
+    if long_edge <= max_long_edge:
+        return None
+    factor = max_long_edge / long_edge
+    w = int(round(width * factor))
+    h = int(round(height * factor))
+    w -= w % 2
+    h -= h % 2
+    return f"scale={w}:{h}"
+
+
 def detect_silences(path: str, noise_db: float = -30.0, min_silence: float = 0.5) -> list[tuple[float, float]]:
     result = subprocess.run(
         ["ffmpeg", "-i", path, "-vn", "-af",
