@@ -18,3 +18,4 @@ web/node_modules/
 .env
 .env.local
 .omc/
+*.log
