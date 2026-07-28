@@ -3,7 +3,8 @@ import { getHook, putHook, runRecipe, getTranscript, getJob, mediaUrl } from "..
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { OverlayPreview } from "../components/OverlayPreview";
 import { hookToOverlays } from "../overlayHook";
-import { captionRefHeight, captionZone } from "../overlayGeom";
+import { captionZone } from "../overlayGeom";
+import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import type { Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
 import { FONTS } from "../fonts";
@@ -19,7 +20,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [capStyle, setCapStyle] = useState({ fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" });
   const [now, setNow] = useState(0);
   const [fps, setFps] = useState(30);
-  const [refHeight, setRefHeight] = useState(1080);
+  const [orientation, setOrientation] = useState<Orientation>("16x9");
   const [playing, setPlaying] = useState(false);
   const [previewScale, setPreviewScale] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -34,7 +35,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
     getJob(slug).then((j: any) => {
       if (j?.captionStyle) setCapStyle(j.captionStyle);
       if (j?.probe?.fps) setFps(j.probe.fps);
-      setRefHeight(captionRefHeight(j?.probe));
+      if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
   }, [slug]);
 
@@ -62,7 +63,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const overlays = hookToOverlays(hook);
   const titleOverlay = overlays.slice(0, 1);
   const subOverlay = overlays.slice(1);
-  const zone = captionZone(capStyle, refHeight);
+  const zone = captionZone(capStyle, frameSize(orientation).height);
   const previewFrame = Math.round(now * fps);
 
   const goNext = async () => {

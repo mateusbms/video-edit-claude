@@ -12,21 +12,9 @@ export function clientToFraction(
   };
 }
 
-// Altura do canvas de referência do CaptionOverlay, que escala por largura fixa 1920.
-// Em 16:9 dá 1080; num vídeo vertical dá bem mais, e é isso que mantém a faixa da legenda
-// alinhada com a legenda desenhada no preview. Sem probe válido, cai no 16:9.
-export function captionRefHeight(
-  probe?: { width?: number; height?: number } | null,
-  fallback = 1080,
-): number {
-  const w = probe?.width;
-  const h = probe?.height;
-  if (!w || !h || w <= 0 || h <= 0) return fallback;
-  return (1920 * h) / w;
-}
-
 // Zona (fração da altura) onde a legenda fica, para desenhar como guia de colisão.
-// Aproximação: legenda ancorada no rodapé, altura ~1.6x o fontSize. refHeight 1080 (16x9).
+// Aproximação: legenda ancorada no rodapé, altura ~1.6x o fontSize.
+// refHeight é a altura do frame-alvo (1080 no 16x9, 1920 no 9x16).
 export function captionZone(
   style: { bottom: number; fontSize: number },
   refHeight = 1080,

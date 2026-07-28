@@ -8,7 +8,8 @@ import { OverlayTimeline } from "../components/OverlayTimeline";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 import { applyStartSec, applyEndSec } from "../overlayTime";
 import { hookToOverlays } from "../overlayHook";
-import { captionRefHeight, captionZone, overlapsInTime } from "../overlayGeom";
+import { captionZone, overlapsInTime } from "../overlayGeom";
+import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import { suggestionToOverlay } from "../suggestions";
 import type { Suggestion, SuggestDefaults } from "../suggestions";
 import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
@@ -43,7 +44,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [hook, setHook] = useState<Hook | null>(null);
   const [playing, setPlaying] = useState(false);
   const [durationSec, setDurationSec] = useState(0);
-  const [refHeight, setRefHeight] = useState(1080);
+  const [orientation, setOrientation] = useState<Orientation>("16x9");
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -63,7 +64,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.probe?.fps) setFps(j.probe.fps);
       if (j?.probe?.duration) setDurationSec(j.probe.duration);
       if (j?.captionStyle) setCapStyle(j.captionStyle);
-      setRefHeight(captionRefHeight(j?.probe));
+      if (j?.orientation) setOrientation(j.orientation);
     }).catch(() => {});
     getSuggestions(slug).then(setSuggestions).catch(() => {});
     getSuggestDefaults(slug).then(setDefs).catch(() => {});
@@ -157,7 +158,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const setEndSec = (s: number) => selected &&
     patch(selected.id, applyEndSec(selected.fromFrame, s, fps));
 
-  const zone = captionZone(capStyle, refHeight);
+  const zone = captionZone(capStyle, frameSize(orientation).height);
   const hookOverlays = hook ? hookToOverlays(hook) : [];
 
   return (
