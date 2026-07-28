@@ -1,5 +1,6 @@
 import asyncio
 import re
+import shutil
 from pathlib import Path
 
 PROG_RE = re.compile(r"^(Rendered|Encoded)\s+(\d+)/(\d+)")
@@ -92,6 +93,15 @@ def parse_progress(line: str):
     return (kind, int(m.group(2)), int(m.group(3)))
 
 
+def _npx(env: dict) -> str:
+    """Caminho absoluto do npx.
+
+    No Windows o npm instala `npx.cmd`; create_subprocess_exec só acha `npx.exe`,
+    então resolvemos via PATHEXT antes de spawnar.
+    """
+    return shutil.which("npx", path=env.get("PATH")) or "npx"
+
+
 async def run_remotion(
     composition: str,
     out_path: Path,
@@ -99,7 +109,7 @@ async def run_remotion(
     remotion_dir: Path,
     env: dict,
 ):
-    cmd = ["npx", "remotion", "render", composition, str(out_path), f"--props={props_path}"]
+    cmd = [_npx(env), "remotion", "render", composition, str(out_path), f"--props={props_path}"]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -119,7 +129,7 @@ async def run_remotion_still(
     env: dict,
 ):
     cmd = [
-        "npx", "remotion", "still", composition, str(out_path),
+        _npx(env), "remotion", "still", composition, str(out_path),
         f"--frame={frame}", f"--props={props_path}",
     ]
     proc = await asyncio.create_subprocess_exec(

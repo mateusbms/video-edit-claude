@@ -248,7 +248,7 @@ def _build_remotion_env() -> dict:
     node_bin = next(Path(".tools").glob("node-*/bin"), None)
     if node_bin:
         extras.append(str(node_bin.resolve()))
-    env["PATH"] = ":".join(extras + [env.get("PATH", "")])
+    env["PATH"] = os.pathsep.join(extras + [env.get("PATH", "")])
     return env
 
 
