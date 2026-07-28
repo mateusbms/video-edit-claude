@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { uploadJob } from "../api";
+import { uploadJob, putOrientation } from "../api";
 import { formatSeconds } from "../util";
 import type { StepProps } from "../App";
+import type { Orientation } from "../frame";
 
 type Probe = { width: number; height: number; fps: number; duration: number };
 
@@ -9,6 +10,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [localSlug, setLocalSlug] = useState(slug || "video1");
   const [probe, setProbe] = useState<Probe | null>(null);
+  const [orientation, setOrientation] = useState<Orientation>("16x9");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -33,11 +35,21 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     try {
       const r = await uploadJob(files, localSlug);
       setSlug(r.slug); setProbe(r.probe); setFiles([]);
+      // o backend já detectou pelo probe; espelha aqui para o usuário poder trocar
+      const detectada: Orientation =
+        r.probe && r.probe.width < r.probe.height ? "9x16" : "16x9";
+      setOrientation(detectada);
     } catch (e: any) {
       setErr(e.message ?? "erro no upload");
     } finally {
       setBusy(false);
     }
+  };
+
+  const trocarOrientacao = async (o: Orientation) => {
+    setOrientation(o);
+    try { await putOrientation(slug || localSlug, o); }
+    catch (e: any) { setErr(e.message ?? "erro ao trocar o formato"); }
   };
 
   return (
@@ -97,6 +109,25 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
           <p>Resolução: <strong>{probe.width}×{probe.height}</strong></p>
           <p>FPS: <strong>{probe.fps.toFixed(2)}</strong></p>
           <p>Duração: <strong>{formatSeconds(probe.duration)}</strong></p>
+          <fieldset className="mt-3 pt-3 border-t border-zinc-800">
+            <legend className="text-zinc-400">Formato de saída</legend>
+            <p className="text-xs text-zinc-500 mb-2">
+              Detectado pelo vídeo. O preview e o render usam esse formato.
+            </p>
+            <div className="flex gap-4">
+              {(["9x16", "16x9"] as Orientation[]).map((o) => (
+                <label key={o} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio" name="orientation" value={o}
+                    checked={orientation === o}
+                    onChange={() => trocarOrientacao(o)}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                  <span>{o === "9x16" ? "9:16 (vertical)" : "16:9 (horizontal)"}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
       )}
       <div className="pt-4">

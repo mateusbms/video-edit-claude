@@ -62,6 +62,7 @@ export type JobState = {
   has_recipe: boolean;
   has_render_16x9: boolean;
   has_render_9x16: boolean;
+  orientation: "16x9" | "9x16";
 };
 
 export type SSEEvent =

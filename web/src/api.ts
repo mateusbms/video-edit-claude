@@ -50,6 +50,13 @@ export async function putBrandKit(slug: string, kitSlug: string): Promise<void> 
   }));
 }
 
+export async function putOrientation(slug: string, orientation: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/orientation`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orientation }),
+  }));
+}
+
 export async function getHook(slug: string): Promise<Hook> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/hook`));
 }
