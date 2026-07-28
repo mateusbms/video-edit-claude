@@ -6,11 +6,7 @@ import { CaptionLayer } from "./components/CaptionLayer";
 import { OverlayLayer } from "./components/OverlayLayer";
 import type { TEditRecipe } from "./schema";
 
-export const Timeline: React.FC<{ recipe: TEditRecipe; captionFontSize: number; captionBottom: number }> = ({
-  recipe,
-  captionFontSize,
-  captionBottom,
-}) => {
+export const Timeline: React.FC<{ recipe: TEditRecipe }> = ({ recipe }) => {
   let offset = 0;
   return (
     <AbsoluteFill style={{ backgroundColor: theme.colors.bg }}>
