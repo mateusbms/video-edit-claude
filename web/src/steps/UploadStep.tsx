@@ -1,16 +1,22 @@
 import { useState } from "react";
-import { uploadJob, putOrientation } from "../api";
+import { uploadJob, putOrientation, getJob } from "../api";
 import { formatSeconds } from "../util";
 import type { StepProps } from "../App";
-import type { Orientation } from "../frame";
+import { orientationFromProbe, type Orientation } from "../frame";
 
 type Probe = { width: number; height: number; fps: number; duration: number };
+
+const LABELS: Record<Orientation, string> = {
+  "16x9": "16:9 (horizontal)",
+  "9x16": "9:16 (vertical)",
+};
 
 export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [localSlug, setLocalSlug] = useState(slug || "video1");
   const [probe, setProbe] = useState<Probe | null>(null);
   const [orientation, setOrientation] = useState<Orientation>("16x9");
+  const [changed, setChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -29,16 +35,31 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   };
   const remove = (i: number) => setFiles((prev) => prev.filter((_, k) => k !== i));
 
+  // Orientação que o job realmente tem no backend. Reler é o que evita mostrar
+  // o rádio numa coisa e o servidor guardar outra — seja num reenvio para um
+  // slug que já tinha escolha explícita, seja se o PUT falhar.
+  const reconcileOrientation = async (
+    jobSlug: string, fallback: Orientation,
+  ): Promise<Orientation> => {
+    let efetiva = fallback;
+    try {
+      const j = await getJob(jobSlug);
+      efetiva = (j?.orientation as Orientation) || fallback;
+    } catch { /* backend indisponível: fica com o fallback */ }
+    setOrientation(efetiva);
+    return efetiva;
+  };
+
   const onUpload = async () => {
     if (files.length === 0) return;
     setBusy(true); setErr(null);
     try {
       const r = await uploadJob(files, localSlug);
-      setSlug(r.slug); setProbe(r.probe); setFiles([]);
-      // o backend já detectou pelo probe; espelha aqui para o usuário poder trocar
-      const detected: Orientation =
-        r.probe && r.probe.width < r.probe.height ? "9x16" : "16x9";
-      setOrientation(detected);
+      setSlug(r.slug); setProbe(r.probe); setFiles([]); setChanged(false);
+      const detected = r.probe
+        ? orientationFromProbe(r.probe.width, r.probe.height)
+        : "16x9";
+      await reconcileOrientation(r.slug, detected);
     } catch (e: any) {
       setErr(e.message ?? "erro no upload");
     } finally {
@@ -47,10 +68,19 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   };
 
   const changeOrientation = async (o: Orientation) => {
+    const anterior = orientation;
     setOrientation(o);
-    try { await putOrientation(slug || localSlug, o); }
+    const jobSlug = slug || localSlug;
+    try { await putOrientation(jobSlug, o); }
     catch (e: any) { setErr(e.message ?? "erro ao trocar o formato"); }
+    const efetiva = await reconcileOrientation(jobSlug, anterior);
+    if (efetiva !== anterior) setChanged(true);
   };
+
+  const sourceOrientation = probe
+    ? orientationFromProbe(probe.width, probe.height)
+    : null;
+  const crossFormat = !!sourceOrientation && sourceOrientation !== orientation;
 
   return (
     <section className="space-y-4">
@@ -123,10 +153,34 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
                     onChange={() => changeOrientation(o)}
                     className="w-4 h-4 accent-emerald-600"
                   />
-                  <span>{o === "9x16" ? "9:16 (vertical)" : "16:9 (horizontal)"}</span>
+                  <span>{LABELS[o]}</span>
                 </label>
               ))}
             </div>
+
+            {crossFormat && sourceOrientation && (
+              <p role="status" className="mt-3 rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+                <strong>Atenção:</strong> seu vídeo é {LABELS[sourceOrientation]} e
+                você escolheu {LABELS[orientation]}. Ele vai ser encaixado inteiro
+                no formato escolhido, e as sobras vão ficar com um fundo desfocado
+                do próprio vídeo. O preview aqui do editor mostra o vídeo no
+                formato original — ele <strong>não</strong> simula esse
+                reenquadramento, então a altura dos textos e da legenda vai
+                aparecer diferente aqui e no vídeo final. Confira pelo botão de
+                prévia da imagem no passo de renderização.
+              </p>
+            )}
+
+            {changed && (
+              <p role="status" className="mt-3 rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+                <strong>Você trocou o formato.</strong> Os textos e a legenda que
+                já estiverem posicionados continuam no mesmo lugar, mas o tamanho
+                deles é medido em relação à largura do vídeo — no vertical a
+                largura é bem menor, então o mesmo texto aparece proporcionalmente
+                maior (e o contrário ao voltar para o horizontal). Reveja os
+                tamanhos nos passos de Hook e Textos.
+              </p>
+            )}
           </fieldset>
         </div>
       )}

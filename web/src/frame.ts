@@ -9,6 +9,12 @@ export const FRAME_SIZES: Record<Orientation, { width: number; height: number }>
 
 const DEFAULT: Orientation = "16x9";
 
+// Espelho de pipeline/orientation.py::orientation_from_probe. Quadrado conta
+// como 16x9. A regra mora aqui para a UI não ter a própria cópia dela.
+export function orientationFromProbe(width: number, height: number): Orientation {
+  return width >= height ? "16x9" : "9x16";
+}
+
 export function frameSize(o?: string): { width: number; height: number } {
   return FRAME_SIZES[o as Orientation] ?? FRAME_SIZES[DEFAULT];
 }
