@@ -11,13 +11,13 @@ def _registered_ids() -> set[str]:
 def test_api_composition_ids_exist_in_remotion_root():
     """Toda composição que a API manda o Remotion renderizar precisa existir no
     Root.tsx. Pega drift como o rename Main16x9 -> Recorded16x9 que quebrou o render."""
-    from api.routes import FORMAT_MAP
+    from api.routes import ORIENTATION_TO_FORMAT
     from api.render import COMPOSITION_MAP
 
     registered = _registered_ids()
     assert registered, "não encontrei nenhum id no Root.tsx"
 
-    api_ids = {v[0] for v in FORMAT_MAP.values()} | set(COMPOSITION_MAP.values())
+    api_ids = {v[0] for v in ORIENTATION_TO_FORMAT.values()} | set(COMPOSITION_MAP.values())
     missing = api_ids - registered
     assert not missing, (
         f"composições referenciadas pela API não existem no Root.tsx: {sorted(missing)}; "

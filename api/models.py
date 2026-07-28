@@ -3,8 +3,6 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints
 
 
-RenderFormat = Literal["main16x9", "vertical9x16"]
-
 Hex = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{3,8}$")]
 
 
@@ -65,10 +63,6 @@ class CutResult(BaseModel):
 
 class RefineParams(BaseModel):
     remove: list[CutSegmentOut] = Field(default_factory=list)
-
-
-class RenderParams(BaseModel):
-    formats: list[RenderFormat] = Field(default_factory=lambda: ["main16x9", "vertical9x16"])
 
 
 class CaptionStyleParams(BaseModel):

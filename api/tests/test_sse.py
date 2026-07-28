@@ -114,7 +114,7 @@ def test_still_renders_png(client, sample_mp4, monkeypatch):
                json={"title": "T", "subtitle": "S", "duration_frames": 60})
     client.post("/api/jobs/s3/recipe")
 
-    r = client.get("/api/jobs/s3/still?frame=30&format=main16x9")
+    r = client.get("/api/jobs/s3/still?frame=30")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     assert r.content.startswith(b"\x89PNG")

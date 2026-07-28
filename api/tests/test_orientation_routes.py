@@ -34,3 +34,90 @@ def test_put_rejeita_valor_invalido(client, sample_mp4):
                 data={"slug": "o4"})
     r = client.put("/api/jobs/o4/orientation", json={"orientation": "banana"})
     assert r.status_code == 422
+
+
+class FakeProc:
+    """Duble do processo do Remotion mockado — só o suficiente para o gen() da rota."""
+
+    def __init__(self, lines):
+        self._lines = list(lines)
+        self.stdout = self
+        self.returncode = 0
+
+    async def readline(self):
+        if self._lines:
+            return (self._lines.pop(0) + "\n").encode()
+        return b""
+
+    async def wait(self):
+        return 0
+
+
+def _preparar_job_sem_pipeline(client, tmp_root, slug: str, orientation: str) -> None:
+    """Leva o job a ter edit-recipe.json sem passar pelo pipeline real.
+
+    Desvio do brief: o helper `_preparar_job` sugerido (upload -> /cut ->
+    /transcript -> /hook -> /recipe) depende do ffprobe, que não está
+    disponível neste ambiente. Sem ele, /cut nunca produz probe.json/
+    trimmed.mp4 e o job nunca chega a ter edit-recipe.json — é exatamente
+    por isso que `test_sse.py::test_still_renders_png` já falha hoje com
+    `assert 409 == 200`. Para não depender do ffprobe, contornamos o
+    pipeline: `PUT /orientation` já chama `init_job` (cria o diretório do
+    job e o job.config.json) e aqui escrevemos `trimmed.mp4` (para
+    `_publish_remotion_assets` ter o que copiar) e `edit-recipe.json`
+    diretamente — o `run_remotion` é mockado nos testes e nunca lê o
+    conteúdo real desses arquivos.
+    """
+    client.put(f"/api/jobs/{slug}/orientation", json={"orientation": orientation})
+    job_dir = tmp_root / "jobs" / slug
+    (job_dir / "trimmed.mp4").write_bytes(b"x")
+    (job_dir / "edit-recipe.json").write_text("{}", encoding="utf-8")
+
+
+def test_render_usa_so_a_orientacao_do_job(client, tmp_root, monkeypatch):
+    """Um job marcado como vertical renderiza 9x16 e mais nada."""
+    from api import render as render_mod
+
+    chamadas = []
+
+    async def fake_run(composition, out_path, props_path, remotion_dir, env):
+        chamadas.append((composition, out_path.name))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"x")
+        return FakeProc(["Rendered 1/1", "Encoded 1/1"])
+
+    monkeypatch.setattr(render_mod, "run_remotion", fake_run)
+
+    _preparar_job_sem_pipeline(client, tmp_root, "r1", "9x16")
+
+    with client.stream("POST", "/api/jobs/r1/render") as r:
+        eventos = [ln.split(":", 1)[1].strip()
+                   for ln in r.iter_lines() if ln.startswith("event:")]
+
+    assert len(chamadas) == 1, f"esperava 1 render, veio {chamadas}"
+    assert chamadas[0] == ("Recorded9x16", "r1-9x16.mp4")
+    assert eventos[-1] == "done"
+
+
+def test_render_de_job_horizontal_usa_16x9(client, tmp_root, monkeypatch):
+    """Job marcado explicitamente como 16x9 renderiza só esse formato."""
+    from api import render as render_mod
+
+    chamadas = []
+
+    async def fake_run(composition, out_path, props_path, remotion_dir, env):
+        chamadas.append((composition, out_path.name))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"x")
+        return FakeProc(["Rendered 1/1"])
+
+    monkeypatch.setattr(render_mod, "run_remotion", fake_run)
+
+    # explícito em vez de depender do fallback (probe é None sem ffprobe)
+    _preparar_job_sem_pipeline(client, tmp_root, "r2", "16x9")
+
+    with client.stream("POST", "/api/jobs/r2/render") as r:
+        list(r.iter_lines())
+
+    assert len(chamadas) == 1
+    assert chamadas[0] == ("Recorded16x9", "r2-16x9.mp4")

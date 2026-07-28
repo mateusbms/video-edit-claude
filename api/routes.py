@@ -14,12 +14,13 @@ from api.jobs import (
 )
 from api.models import (
     CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
-    Hook, OrientationParams, OverlayParams, RefineParams, RenderParams,
+    Hook, OrientationParams, OverlayParams, RefineParams,
     SuggestDefaults, Suggestion, TranscribeParams,
 )
 from api.progress import run_with_progress
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
+from pipeline.orientation import FORMAT_KEYS
 from pipeline.silence import Segment
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_refine, stage_transcribe
 
@@ -287,14 +288,15 @@ def _publish_remotion_assets(slug: str, jobs_root: Path) -> Path:
     return remotion_dir
 
 
-FORMAT_MAP = {
-    "main16x9": ("Recorded16x9", "16x9"),
-    "vertical9x16": ("Recorded9x16", "9x16"),
+# orientação -> (composição Remotion, sufixo do arquivo de saída)
+ORIENTATION_TO_FORMAT = {
+    "16x9": ("Recorded16x9", "16x9"),
+    "9x16": ("Recorded9x16", "9x16"),
 }
 
 
 @router.post("/jobs/{slug}/render")
-async def run_render(slug: str, params: RenderParams | None = None):
+async def run_render(slug: str):
     jobs_root, _, output_root = _roots()
     output_root.mkdir(parents=True, exist_ok=True)
     job_dir = Path(jobs_root) / slug
@@ -302,13 +304,10 @@ async def run_render(slug: str, params: RenderParams | None = None):
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="edit-recipe.json não existe; rode /recipe antes")
 
-    selected = (params.formats if params else None) or ["main16x9", "vertical9x16"]
-    jobs_to_run = [
-        (f, FORMAT_MAP[f][0], f"{slug}-{FORMAT_MAP[f][1]}.mp4")
-        for f in selected if f in FORMAT_MAP
-    ]
-    if not jobs_to_run:
-        raise HTTPException(status_code=400, detail="nenhum formato selecionado")
+    # renderiza só a orientação efetiva do job, não uma lista vinda do body
+    orientation = get_state(slug, jobs_root).orientation
+    composition, suffix = ORIENTATION_TO_FORMAT[orientation]
+    jobs_to_run = [(FORMAT_KEYS[orientation], composition, f"{slug}-{suffix}.mp4")]
 
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
     output_root_abs = output_root.resolve()
@@ -353,11 +352,10 @@ async def run_render(slug: str, params: RenderParams | None = None):
 
 
 @router.get("/jobs/{slug}/still")
-async def get_still(slug: str, frame: int = 0, format: str = "main16x9"):
-    if format not in FORMAT_MAP:
-        raise HTTPException(status_code=400, detail="format inválido")
-    composition = FORMAT_MAP[format][0]
+async def get_still(slug: str, frame: int = 0):
     jobs_root, _, output_root = _roots()
+    orientation = get_state(slug, jobs_root).orientation
+    composition, suffix = ORIENTATION_TO_FORMAT[orientation]
     props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="recipe ausente")
@@ -365,7 +363,7 @@ async def get_still(slug: str, frame: int = 0, format: str = "main16x9"):
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
     env = _build_remotion_env()
 
-    out = (output_root / f".still-{slug}-{format}-{frame}.png").resolve()
+    out = (output_root / f".still-{slug}-{suffix}-{frame}.png").resolve()
     proc = await render_mod.run_remotion_still(composition, out, frame, props_path, remotion_dir, env)
     if proc.returncode != 0 or not out.exists():
         raise HTTPException(status_code=500, detail="still falhou")
