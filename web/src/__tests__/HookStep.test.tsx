@@ -20,6 +20,24 @@ function mockFetch() {
   return calls;
 }
 
+// Mesma coisa que mockFetch, mas permite sobrescrever o payload de GET /jobs/{slug}
+// (usado para testar o wiring de orientation → zona da legenda).
+function mockFetchWithJob(jobOverrides: any) {
+  const calls: any[] = [];
+  const f = vi.fn(async (url: string, init?: any) => {
+    calls.push({ url, init });
+    if (url.endsWith("/hook") && (!init || !init.method || init.method === "GET"))
+      return { ok: true, json: async () => ({ title: "T", subtitle: "", duration_frames: 90 }) } as any;
+    if (url.endsWith("/transcript"))
+      return { ok: true, json: async () => [] } as any;
+    if (url.match(/\/jobs\/[^/]+$/) && (!init || !init.method))
+      return { ok: true, json: async () => ({ slug: "s1", captionStyle: { fontSize: 48, bottom: 120, color: "", highlightColor: "", fontFamily: "" }, probe: { fps: 30 }, ...jobOverrides }) } as any;
+    return { ok: true, json: async () => ({ ok: true }) } as any;
+  });
+  vi.stubGlobal("fetch", f);
+  return calls;
+}
+
 const props = { slug: "s1", setSlug: () => {}, next: () => {}, back: () => {} };
 
 describe("HookStep", () => {
@@ -74,5 +92,30 @@ describe("HookStep", () => {
     Object.defineProperty(video, "currentTime", { value: 10, configurable: true });
     fireEvent.timeUpdate(video); // frame 300 > janela (90) → some
     expect(screen.queryByText("T")).not.toBeInTheDocument();
+  });
+
+  it("usa a orientation do job para a zona da legenda (9x16 → altura 1920, não o fallback 1080)", async () => {
+    mockFetchWithJob({
+      orientation: "9x16",
+      captionStyle: { fontSize: 92, bottom: 327, color: "", highlightColor: "", fontFamily: "" },
+    });
+    const { container } = render(<HookStep {...props} />);
+    await screen.findByText("T"); // espera o mount assentar
+
+    // No HookStep só existe um OverlayPreview (sem OverlayTimeline), então o único
+    // aria-hidden do preview é a zona da legenda.
+    const zoneEl = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>("[aria-hidden]");
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+
+    const topPct = parseFloat(zoneEl.style.top);
+    const expectedWith1920 = (1 - (327 + 92 * 1.6) / 1920) * 100;
+    const expectedWith1080Fallback = (1 - (327 + 92 * 1.6) / 1080) * 100;
+    // Bate com a altura do frame 9x16 (1920)...
+    expect(topPct).toBeCloseTo(expectedWith1920, 3);
+    // ...e não com o fallback 1080 antigo (prova que orientation chegou até a zona).
+    expect(topPct).not.toBeCloseTo(expectedWith1080Fallback, 1);
   });
 });

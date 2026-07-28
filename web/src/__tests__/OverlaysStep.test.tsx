@@ -24,6 +24,28 @@ function mockFetch() {
   return calls;
 }
 
+// Mesma coisa que mockFetch, mas permite sobrescrever o payload de GET /jobs/{slug}
+// (usado para testar o wiring de orientation → zona da legenda).
+function mockFetchWithJob(jobOverrides: any) {
+  const calls: any[] = [];
+  const f = vi.fn(async (url: string, init?: any) => {
+    calls.push({ url, init });
+    if (url.endsWith("/overlays") && (!init || init.method === "GET" || !init.method))
+      return { ok: true, json: async () => [] } as any;
+    if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
+    if (url.endsWith("/hook") && (!init || !init.method)) return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+    if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+      return { ok: true, json: async () => [] } as any;
+    if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+      return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "Poppins", color: "", enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80 }) } as any;
+    if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
+      return { ok: true, json: async () => ({ slug: "s1", probe: { width: 1920, height: 1080, fps: 30, duration: 10 }, ...jobOverrides }) } as any;
+    return { ok: true, json: async () => ({ ok: true }) } as any;
+  });
+  vi.stubGlobal("fetch", f);
+  return calls;
+}
+
 describe("OverlaysStep", () => {
   beforeEach(() => { mockFetch(); });
   afterEach(() => vi.unstubAllGlobals());
@@ -151,5 +173,32 @@ describe("OverlaysStep", () => {
   it("tem controle de entrada padrão no estilo", async () => {
     render(<OverlaysStep {...props} />);
     expect(await screen.findByLabelText(/entrada padrão/i)).toBeInTheDocument();
+  });
+
+  it("usa a orientation do job para a zona da legenda (9x16 → altura 1920, não o fallback 1080)", async () => {
+    mockFetchWithJob({
+      orientation: "9x16",
+      captionStyle: { fontSize: 92, bottom: 327, color: "", highlightColor: "", fontFamily: "" },
+    });
+    const { container } = render(<OverlaysStep {...props} />);
+    await screen.findByRole("button", { name: /texto/i }); // espera o mount assentar
+
+    // A zona da legenda é o único elemento aria-hidden do OverlayPreview com top/height
+    // inline (os aria-hidden da OverlayTimeline usam left/width, não top/height).
+    const zoneEl = await waitFor(() => {
+      const el = Array.from(container.querySelectorAll<HTMLElement>("[aria-hidden]")).find(
+        (n) => n.style.top !== "" && n.style.height !== "",
+      );
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+
+    const topPct = parseFloat(zoneEl.style.top);
+    const expectedWith1920 = (1 - (327 + 92 * 1.6) / 1920) * 100;
+    const expectedWith1080Fallback = (1 - (327 + 92 * 1.6) / 1080) * 100;
+    // Bate com a altura do frame 9x16 (1920)...
+    expect(topPct).toBeCloseTo(expectedWith1920, 3);
+    // ...e não com o fallback 1080 antigo (prova que orientation chegou até a zona).
+    expect(topPct).not.toBeCloseTo(expectedWith1080Fallback, 1);
   });
 });
