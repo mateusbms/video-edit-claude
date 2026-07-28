@@ -295,6 +295,31 @@ ORIENTATION_TO_FORMAT = {
 }
 
 
+def _assert_recipe_matches_orientation(props_path: Path, orientation: str) -> None:
+    """409 se a recipe em disco foi gerada para outra orientação.
+
+    A composição vem do estado do job, mas a recipe carrega o `formats` de
+    quando foi gerada — se divergirem, o Remotion estoura sem explicar. Recipes
+    legadas (sem a chave `orientation`) trazem os dois formatos e contam como
+    compatíveis.
+    """
+    try:
+        recipe = load_json(props_path)
+    except Exception:
+        return  # arquivo ilegível: deixa o Remotion reclamar do conteúdo
+    if not isinstance(recipe, dict):
+        return
+    recipe_orientation = recipe.get("orientation") or ""
+    if recipe_orientation and recipe_orientation != orientation:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"a recipe foi gerada para {recipe_orientation} e o job está em "
+                f"{orientation}; rode /recipe novamente antes de renderizar"
+            ),
+        )
+
+
 @router.post("/jobs/{slug}/render")
 async def run_render(slug: str):
     jobs_root, _, output_root = _roots()
@@ -306,6 +331,7 @@ async def run_render(slug: str):
 
     # renderiza só a orientação efetiva do job, não uma lista vinda do body
     orientation = get_state(slug, jobs_root).orientation
+    _assert_recipe_matches_orientation(props_path, orientation)
     composition, suffix = ORIENTATION_TO_FORMAT[orientation]
     jobs_to_run = [(FORMAT_KEYS[orientation], composition, f"{slug}-{suffix}.mp4")]
 
@@ -359,6 +385,7 @@ async def get_still(slug: str, frame: int = 0):
     props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="recipe ausente")
+    _assert_recipe_matches_orientation(props_path, orientation)
 
     remotion_dir = _publish_remotion_assets(slug, jobs_root)
     env = _build_remotion_env()

@@ -92,12 +92,22 @@ def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
 
 
 def update_orientation(slug: str, jobs_root: Path, orientation: str) -> None:
-    """Grava a orientação escolhida. "" volta ao auto-detectar pelo probe."""
+    """Grava a orientação escolhida. "" volta ao auto-detectar pelo probe.
+
+    Se a orientação efetiva mudou, a `edit-recipe.json` em disco fica obsoleta:
+    ela carrega o `orientation` e o `formats` de quando foi gerada, e o render
+    escolhe a composição pelo estado atual do job. Mesmo padrão de
+    `pipeline/stages.py::stage_refine`, que apaga os artefatos derivados quando
+    a origem muda.
+    """
     if orientation != "" and orientation not in FRAME_SIZES:
         raise ValueError(f"orientação inválida: {orientation!r}")
+    before = get_state(slug, jobs_root).orientation
     job = init_job(jobs_root, slug)
     job.config.orientation = orientation
     write_json(job.dir / "job.config.json", asdict(job.config))
+    if get_state(slug, jobs_root).orientation != before:
+        (job.dir / "edit-recipe.json").unlink(missing_ok=True)
 
 
 def suggest_hook(transcript: list[dict]) -> Hook:

@@ -99,6 +99,84 @@ def test_render_usa_so_a_orientacao_do_job(client, tmp_root, monkeypatch):
     assert eventos[-1] == "done"
 
 
+def _escrever_recipe(tmp_root, slug: str, conteudo: str) -> None:
+    (tmp_root / "jobs" / slug / "edit-recipe.json").write_text(conteudo, encoding="utf-8")
+
+
+def test_render_recusa_recipe_de_outra_orientacao(client, tmp_root, monkeypatch):
+    """Fluxo que quebrava: trocar o formato e pular direto para Renderizar sem
+    passar por Hook/Textos (que são quem chama /recipe)."""
+    from api import render as render_mod
+
+    async def nunca(*a, **k):
+        raise AssertionError("não deveria chegar a rodar o Remotion")
+
+    monkeypatch.setattr(render_mod, "run_remotion", nunca)
+
+    _preparar_job_sem_pipeline(client, tmp_root, "d1", "9x16")
+    _escrever_recipe(tmp_root, "d1", '{"orientation": "16x9", "formats": {"main16x9": {}}}')
+
+    r = client.post("/api/jobs/d1/render")
+    assert r.status_code == 409
+    detalhe = r.json()["detail"]
+    assert "16x9" in detalhe and "9x16" in detalhe and "/recipe" in detalhe
+
+
+def test_render_aceita_recipe_legada_sem_orientation(client, tmp_root, monkeypatch):
+    """Recipes de antes desta feature não têm a chave — não podem virar 409."""
+    from api import render as render_mod
+
+    chamadas = []
+
+    async def fake_run(composition, out_path, props_path, remotion_dir, env):
+        chamadas.append(composition)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"x")
+        return FakeProc(["Rendered 1/1"])
+
+    monkeypatch.setattr(render_mod, "run_remotion", fake_run)
+
+    _preparar_job_sem_pipeline(client, tmp_root, "d2", "9x16")
+    _escrever_recipe(
+        tmp_root, "d2",
+        '{"formats": {"main16x9": {}, "vertical9x16": {}}}',
+    )
+
+    with client.stream("POST", "/api/jobs/d2/render") as r:
+        list(r.iter_lines())
+    assert chamadas == ["Recorded9x16"]
+
+
+def test_still_recusa_recipe_de_outra_orientacao(client, tmp_root, monkeypatch):
+    from api import render as render_mod
+
+    async def nunca(*a, **k):
+        raise AssertionError("não deveria chegar a rodar o Remotion")
+
+    monkeypatch.setattr(render_mod, "run_remotion_still", nunca)
+
+    _preparar_job_sem_pipeline(client, tmp_root, "d3", "16x9")
+    _escrever_recipe(tmp_root, "d3", '{"orientation": "9x16"}')
+
+    r = client.get("/api/jobs/d3/still?frame=0")
+    assert r.status_code == 409
+    assert "/recipe" in r.json()["detail"]
+
+
+def test_trocar_o_formato_invalida_a_recipe_pela_rota(client, tmp_root):
+    """A ponta HTTP do mesmo comportamento: PUT /orientation apaga a recipe."""
+    _preparar_job_sem_pipeline(client, tmp_root, "d4", "16x9")
+    recipe = tmp_root / "jobs" / "d4" / "edit-recipe.json"
+    assert recipe.exists()
+
+    client.put("/api/jobs/d4/orientation", json={"orientation": "9x16"})
+    assert not recipe.exists()
+
+    r = client.post("/api/jobs/d4/render")
+    assert r.status_code == 409
+    assert "/recipe" in r.json()["detail"]
+
+
 def test_render_de_job_horizontal_usa_16x9(client, tmp_root, monkeypatch):
     """Job marcado explicitamente como 16x9 renderiza só esse formato."""
     from api import render as render_mod

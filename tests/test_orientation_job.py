@@ -90,3 +90,49 @@ class TestUpdateOrientation:
         update_orientation("v6", tmp_path, "16x9")
         update_orientation("v6", tmp_path, "")
         assert get_state("v6", tmp_path).orientation == "9x16"
+
+
+class TestInvalidacaoDaRecipe:
+    """Trocar a orientação torna a edit-recipe.json obsoleta: ela carrega o
+    `formats` de quando foi gerada e o render escolhe a composição pelo estado
+    atual do job. Mesmo padrão de stage_refine."""
+
+    def _recipe(self, job_dir):
+        return job_dir / "edit-recipe.json"
+
+    def test_trocar_a_orientacao_apaga_a_recipe(self, tmp_path):
+        job = init_job(tmp_path, "i1")
+        _write_probe(job.dir, 2160, 3840)  # auto = 9x16
+        self._recipe(job.dir).write_text("{}", encoding="utf-8")
+        update_orientation("i1", tmp_path, "16x9")
+        assert not self._recipe(job.dir).exists()
+
+    def test_voltar_ao_auto_tambem_apaga_se_a_efetiva_mudar(self, tmp_path):
+        job = init_job(tmp_path, "i2")
+        _write_probe(job.dir, 2160, 3840)
+        update_orientation("i2", tmp_path, "16x9")
+        self._recipe(job.dir).write_text("{}", encoding="utf-8")
+        update_orientation("i2", tmp_path, "")  # volta para 9x16
+        assert not self._recipe(job.dir).exists()
+
+    def test_reafirmar_a_mesma_orientacao_preserva_a_recipe(self, tmp_path):
+        """Clicar de novo no rádio já selecionado não pode custar um /recipe."""
+        job = init_job(tmp_path, "i3")
+        _write_probe(job.dir, 2160, 3840)
+        update_orientation("i3", tmp_path, "9x16")
+        self._recipe(job.dir).write_text("{}", encoding="utf-8")
+        update_orientation("i3", tmp_path, "9x16")
+        assert self._recipe(job.dir).exists()
+
+    def test_escolher_explicitamente_o_que_o_probe_ja_dizia_preserva(self, tmp_path):
+        job = init_job(tmp_path, "i4")
+        _write_probe(job.dir, 2160, 3840)  # auto = 9x16
+        self._recipe(job.dir).write_text("{}", encoding="utf-8")
+        update_orientation("i4", tmp_path, "9x16")  # efetiva não muda
+        assert self._recipe(job.dir).exists()
+
+    def test_sem_recipe_em_disco_nao_quebra(self, tmp_path):
+        job = init_job(tmp_path, "i5")
+        _write_probe(job.dir, 2160, 3840)
+        update_orientation("i5", tmp_path, "16x9")
+        assert not self._recipe(job.dir).exists()
