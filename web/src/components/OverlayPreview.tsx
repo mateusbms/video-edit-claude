@@ -1,7 +1,7 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { Overlay } from "../types";
 import { overlayProgress } from "../overlayAnim";
-import { clientToFraction, overlapsCaption } from "../overlayGeom";
+import { clientToFraction, overlapsCaption, snapPosition } from "../overlayGeom";
 
 type Zone = { top: number; bottom: number };
 
@@ -19,6 +19,7 @@ export const OverlayPreview: React.FC<{
 }> = ({ overlays, frame, scale, selectedId, onSelect, onMove, readOnlyOverlays = [], captionZone, playing = false, timeOverlapIds }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragId = useRef<string | null>(null);
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   const inWindow = (o: Overlay) => frame >= o.fromFrame && frame < o.fromFrame + o.durationInFrames;
 
@@ -30,11 +31,17 @@ export const OverlayPreview: React.FC<{
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragId.current || !wrapRef.current) return;
+    const draggedId = dragId.current;
     const rect = wrapRef.current.getBoundingClientRect();
     const { x, y } = clientToFraction(e.clientX, e.clientY, rect);
-    onMove(dragId.current, x, y);
+    const others = overlays.filter((o) => o.id !== draggedId);
+    const targetsX = [0.5, ...others.map((o) => o.x), ...readOnlyOverlays.map((o) => o.x)];
+    const targetsY = [0.5, ...others.map((o) => o.y), ...readOnlyOverlays.map((o) => o.y)];
+    const snapped = snapPosition(x, y, targetsX, targetsY);
+    setGuides({ x: snapped.guideX, y: snapped.guideY });
+    onMove(draggedId, snapped.x, snapped.y);
   };
-  const endDrag = () => { dragId.current = null; };
+  const endDrag = () => { dragId.current = null; setGuides({ x: null, y: null }); };
 
   const anchorTx = (ov: Overlay) =>
     ov.anchor === "left" ? "translate(0, -50%)"
@@ -72,6 +79,15 @@ export const OverlayPreview: React.FC<{
             background: "rgba(234,179,8,0.12)",
             border: "1px dashed rgba(234,179,8,0.5)",
           }} />
+      )}
+
+      {guides.x !== null && (
+        <div aria-label="guia de alinhamento" className="absolute top-0 bottom-0 pointer-events-none"
+          style={{ left: `${guides.x * 100}%`, width: 1, background: "#22d3ee" }} />
+      )}
+      {guides.y !== null && (
+        <div aria-label="guia de alinhamento" className="absolute left-0 right-0 pointer-events-none"
+          style={{ top: `${guides.y * 100}%`, height: 1, background: "#22d3ee" }} />
       )}
 
       {readOnlyOverlays.filter(inWindow).map((ov) => {

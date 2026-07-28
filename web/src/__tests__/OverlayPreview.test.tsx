@@ -51,6 +51,21 @@ describe("OverlayPreview", () => {
     expect(onMove).toHaveBeenCalled();
     expect(onMove.mock.calls[0][0]).toBe("ov_a");
   });
+
+  it("mostra guia de alinhamento ao arrastar perto do centro", () => {
+    const onMove = vi.fn();
+    const { container } = render(
+      <OverlayPreview overlays={[ov]} frame={20} scale={1} selectedId={null} onSelect={() => {}} onMove={onMove} />,
+    );
+    const wrapper = container.firstChild as HTMLElement;
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => {},
+    } as DOMRect);
+    fireEvent.pointerDown(screen.getByText("Oferta"), { pointerId: 1 });
+    fireEvent.pointerMove(wrapper, { clientX: 50, clientY: 20 }); // x=0.5 → snap ao centro
+    expect(onMove).toHaveBeenCalledWith("ov_a", 0.5, expect.anything());
+    expect(screen.getByLabelText(/guia de alinhamento/i)).toBeInTheDocument();
+  });
 });
 
 describe("OverlayPreview — extensões Fase C.1", () => {
