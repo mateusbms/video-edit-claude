@@ -93,6 +93,7 @@ def stage_recipe(job: Job) -> None:
         width=meta["width"], height=meta["height"], fps=meta["fps"],
         trimmed_duration=trimmed_duration, words=words,
         hook=hook,
+        orientation=job.config.orientation,
         max_chars=job.config.max_caption_chars, max_gap=job.config.max_caption_gap,
         trimmed_frames_actual=trimmed_frames_actual,
         caption_style={

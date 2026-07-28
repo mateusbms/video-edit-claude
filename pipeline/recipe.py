@@ -1,3 +1,6 @@
+from pipeline.orientation import FORMAT_KEYS, frame_size, resolve_orientation
+
+
 def seconds_to_frames(seconds: float, fps: float) -> int:
     return round(seconds * fps)
 
@@ -28,6 +31,12 @@ def group_words_into_lines(words: list[dict], max_chars: int = 24, max_gap: floa
     ]
 
 
+def _formats_for(orientation: str) -> dict:
+    """Só a orientação escolhida — o job renderiza um formato único."""
+    w, h = frame_size(orientation)
+    return {FORMAT_KEYS[orientation]: {"width": w, "height": h}}
+
+
 def build_recipe(
     *,
     width: int,
@@ -43,6 +52,7 @@ def build_recipe(
     caption_style: dict | None = None,
     brand: dict | None = None,
     overlays: list[dict] | None = None,
+    orientation: str = "",
 ) -> dict:
     # Se temos nb_frames do ffprobe, usar diretamente — evita Remotion ler
     # além do fim do vídeo quando duration*fps > nb_frames real.
@@ -72,7 +82,7 @@ def build_recipe(
             }
         )
 
-    orientation = "16x9" if width >= height else "9x16"
+    orientation = resolve_orientation(orientation, {"width": width, "height": height})
 
     cs = caption_style or {}
     bcolors = (brand or {}).get("colors", {})
@@ -144,8 +154,5 @@ def build_recipe(
         "captions": captions,
         "captionStyle": resolved_caption_style,
         "overlays": hook_overlays + manual_overlays,
-        "formats": {
-            "main16x9": {"width": 1920, "height": 1080},
-            "vertical9x16": {"width": 1080, "height": 1920},
-        },
+        "formats": _formats_for(orientation),
     }

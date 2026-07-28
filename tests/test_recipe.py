@@ -91,7 +91,8 @@ def test_build_recipe_hook_overlay_and_no_card():
     subs = [o for o in recipe["overlays"][1:] if o["text"] == "em 60s"]
     assert len(subs) == 1
     assert subs[0]["type"] == "text"
-    assert recipe["formats"]["vertical9x16"]["width"] == 1080
+    # fonte 1920x1080 -> deriva 16x9; formats agora só tem essa chave
+    assert recipe["formats"]["main16x9"]["width"] == 1920
 
 
 def test_build_recipe_no_subtitle_overlay_when_empty():
@@ -225,3 +226,33 @@ def test_stage_recipe_uses_brand_kit(tmp_path, monkeypatch):
     recipe = _json.loads((job.dir / "edit-recipe.json").read_text())
     assert recipe["captionStyle"]["color"] == "#abcdef"
     assert recipe["captionStyle"]["fontFamily"] == "Poppins"
+
+
+def _args(**over):
+    base = dict(
+        width=2160, height=3840, fps=30.0, trimmed_duration=10.0,
+        words=[{"word": "oi", "start": 0.0, "end": 0.5}],
+        hook={"title": "T", "subtitle": "", "duration_frames": 90},
+    )
+    base.update(over)
+    return base
+
+
+class TestRecipeOrientation:
+    def test_orientacao_explicita_vence_as_dimensoes_da_fonte(self):
+        r = build_recipe(**_args(orientation="16x9"))
+        assert r["orientation"] == "16x9"
+
+    def test_sem_orientacao_explicita_deriva_da_fonte(self):
+        assert build_recipe(**_args())["orientation"] == "9x16"
+        assert build_recipe(**_args(width=1280, height=720))["orientation"] == "16x9"
+
+    def test_formats_tem_so_a_orientacao_escolhida(self):
+        r = build_recipe(**_args(orientation="9x16"))
+        assert set(r["formats"]) == {"vertical9x16"}
+        assert r["formats"]["vertical9x16"] == {"width": 1080, "height": 1920}
+
+    def test_formats_16x9(self):
+        r = build_recipe(**_args(orientation="16x9"))
+        assert set(r["formats"]) == {"main16x9"}
+        assert r["formats"]["main16x9"] == {"width": 1920, "height": 1080}
