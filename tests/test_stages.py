@@ -40,6 +40,7 @@ def test_stage_recipe_writes_edit_recipe(tmp_path):
     assert recipe["captions"][0]["fromFrame"] == 0
     assert recipe["overlays"][0]["type"] == "hook"
     assert recipe["overlays"][0]["text"] == "Hook"
+    assert recipe["overlays"][0]["maxWidthPct"] == 80
 
 
 @_needs_ffmpeg

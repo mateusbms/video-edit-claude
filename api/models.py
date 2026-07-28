@@ -49,6 +49,7 @@ class Hook(BaseModel):
     fontFamily: str = ""
     color: str = ""
     anchor: Literal["center", "left", "right"] = "center"
+    maxWidthPct: int = 80
 
 
 class CutSegmentOut(BaseModel):

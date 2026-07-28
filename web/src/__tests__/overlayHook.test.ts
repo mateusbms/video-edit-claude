@@ -3,7 +3,7 @@ import { hookToOverlays } from "../overlayHook";
 import type { Hook } from "../types";
 
 const base: Hook = { title: "H", subtitle: "sub", duration_frames: 90,
-  x: 0.3, y: 0.6, fontSize: 100, fontFamily: "Poppins", color: "#ff0000", anchor: "left" };
+  x: 0.3, y: 0.6, fontSize: 100, fontFamily: "Poppins", color: "#ff0000", anchor: "left", maxWidthPct: 55 };
 
 describe("hookToOverlays", () => {
   it("mapeia título com os campos do hook", () => {
@@ -13,6 +13,7 @@ describe("hookToOverlays", () => {
     expect(t.x).toBe(0.3); expect(t.y).toBe(0.6); expect(t.fontSize).toBe(100);
     expect(t.fontFamily).toBe("Poppins"); expect(t.color).toBe("#ff0000"); expect(t.anchor).toBe("left");
     expect(t.durationInFrames).toBe(90);
+    expect(t.maxWidthPct).toBe(55);
   });
   it("deriva o subtítulo do título", () => {
     const ovs = hookToOverlays(base);

@@ -93,6 +93,7 @@ def build_recipe(
     hff = hook.get("fontFamily", "")
     hcolor = hook.get("color", "")
     hanchor = hook.get("anchor", "center")
+    hmaxw = hook.get("maxWidthPct", 80)
     hook_overlays = [
         {
             "id": "ov_hook",
@@ -104,6 +105,7 @@ def build_recipe(
             "fontSize": hfs, "color": hcolor, "highlightColor": "", "fontFamily": hff,
             "enter": "slide-up", "exit": "fade",
             "enterDurationInFrames": 12, "exitDurationInFrames": 12,
+            "maxWidthPct": hmaxw,
         }
     ]
     subtitle = hook.get("subtitle", "")
@@ -119,6 +121,7 @@ def build_recipe(
                 "fontSize": round(hfs * 0.48), "color": hcolor, "highlightColor": "", "fontFamily": hff,
                 "enter": "slide-up", "exit": "fade",
                 "enterDurationInFrames": 12, "exitDurationInFrames": 12,
+                "maxWidthPct": hmaxw,
             }
         )
 

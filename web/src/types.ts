@@ -19,6 +19,7 @@ export type Hook = {
   fontFamily?: string;
   color?: string;
   anchor?: "center" | "left" | "right";
+  maxWidthPct?: number;
 };
 
 export type OverlayAnim = "fade" | "slide-up" | "slide-down" | "pop" | "none";

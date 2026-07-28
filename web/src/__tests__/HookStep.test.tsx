@@ -58,6 +58,12 @@ describe("HookStep", () => {
     }, { timeout: 2000 });
   });
 
+  it("tem o controle de largura do hook", async () => {
+    mockFetch();
+    render(<HookStep {...props} />);
+    expect(await screen.findByLabelText(/largura do hook/i)).toBeInTheDocument();
+  });
+
   it("hook anima com o play: some quando o vídeo passa da janela", async () => {
     mockFetch();
     const { container } = render(<HookStep {...props} />);

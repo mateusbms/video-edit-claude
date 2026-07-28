@@ -8,12 +8,14 @@ export function hookToOverlays(hook: Hook): Overlay[] {
   const fontFamily = hook.fontFamily ?? "";
   const color = hook.color ?? "";
   const anchor = hook.anchor ?? "center";
+  const maxWidthPct = hook.maxWidthPct ?? 80;
   const dur = hook.duration_frames;
   const title: Overlay = {
     id: "ov_hook", type: "hook", text: hook.title,
     fromFrame: 0, durationInFrames: dur,
     x, y, anchor, fontSize, color, highlightColor: "", fontFamily,
     enter: "slide-up", exit: "fade", enterDurationInFrames: 12, exitDurationInFrames: 12,
+    maxWidthPct,
   };
   const out: Overlay[] = [title];
   if (hook.subtitle) {
@@ -23,6 +25,7 @@ export function hookToOverlays(hook: Hook): Overlay[] {
       x, y: y + 0.08, anchor, fontSize: Math.round(fontSize * 0.48),
       color, highlightColor: "", fontFamily,
       enter: "slide-up", exit: "fade", enterDurationInFrames: 12, exitDurationInFrames: 12,
+      maxWidthPct,
     });
   }
   return out;

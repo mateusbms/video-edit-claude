@@ -10,7 +10,7 @@ import { FONTS } from "../fonts";
 
 const DEF: Hook = {
   title: "", subtitle: "", duration_frames: 90,
-  x: 0.5, y: 0.16, fontSize: 84, fontFamily: "", color: "", anchor: "center",
+  x: 0.5, y: 0.16, fontSize: 84, fontFamily: "", color: "", anchor: "center", maxWidthPct: 80,
 };
 
 export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
@@ -132,6 +132,10 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
             onChange={(e) => set({ anchor: e.target.value as Hook["anchor"] })} className="bg-zinc-800 rounded px-2 py-1">
             {["center", "left", "right"].map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
+        </label>
+        <label className="flex flex-col gap-1">Largura
+          <input aria-label="largura do hook" type="range" min={20} max={100}
+            value={hook.maxWidthPct ?? 80} onChange={(e) => set({ maxWidthPct: Number(e.target.value) })} />
         </label>
       </div>
 
