@@ -120,6 +120,10 @@ class SuggestDefaults(BaseModel):
     fontSize: int = 64
     fontFamily: str = ""
     color: HexOrEmpty = ""
+    enter: OverlayAnim = "slide-up"
+    exit: OverlayAnim = "fade"
+    durationInFrames: int = 75
+    maxWidthPct: int = 80
 
 
 class JobState(BaseModel):

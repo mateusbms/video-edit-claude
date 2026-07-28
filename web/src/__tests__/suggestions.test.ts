@@ -8,6 +8,7 @@ const sug: Suggestion = {
 };
 const defs: SuggestDefaults = {
   x: 0.4, y: 0.8, anchor: "left", fontSize: 90, fontFamily: "Poppins", color: "#ff0000",
+  enter: "pop", exit: "slide-down", durationInFrames: 90, maxWidthPct: 70,
 };
 
 describe("suggestionToOverlay", () => {
@@ -24,7 +25,9 @@ describe("suggestionToOverlay", () => {
     expect(o.fontSize).toBe(90);
     expect(o.fontFamily).toBe("Poppins");
     expect(o.color).toBe("#ff0000");
-    expect(o.enter).toBe("slide-up");
-    expect(o.exit).toBe("fade");
+    expect(o.enter).toBe("pop");
+    expect(o.exit).toBe("slide-down");
+    expect(o.maxWidthPct).toBe(70);
+    expect(o.durationInFrames).toBe(sug.durationInFrames);
   });
 });

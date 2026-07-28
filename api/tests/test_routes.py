@@ -212,3 +212,12 @@ def test_suggest_defaults_roundtrip(client, sample_mp4):
     d = {"x": 0.5, "y": 0.8, "anchor": "center", "fontSize": 80, "fontFamily": "Poppins", "color": "#ffffff"}
     assert client.put("/api/jobs/sug4/suggest-defaults", json=d).status_code == 200
     assert client.get("/api/jobs/sug4/suggest-defaults").json()["y"] == 0.8
+
+
+def test_suggest_defaults_accepts_animation_fields(client, sample_mp4):
+    _upload(client, sample_mp4, "sd1")
+    d = {"x": 0.5, "y": 0.12, "anchor": "center", "fontSize": 64, "fontFamily": "", "color": "",
+         "enter": "pop", "exit": "slide-down", "durationInFrames": 90, "maxWidthPct": 70}
+    assert client.put("/api/jobs/sd1/suggest-defaults", json=d).status_code == 200
+    got = client.get("/api/jobs/sd1/suggest-defaults").json()
+    assert got["enter"] == "pop" and got["durationInFrames"] == 90 and got["maxWidthPct"] == 70

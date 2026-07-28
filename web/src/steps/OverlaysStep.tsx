@@ -17,14 +17,15 @@ import { FONTS } from "../fonts";
 
 const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
 
-function newOverlay(fromFrame: number, id: string): Overlay {
+function newOverlay(fromFrame: number, id: string, defs: SuggestDefaults): Overlay {
   return {
     id,
     type: "text", text: "Novo texto",
-    fromFrame, durationInFrames: 60,
+    fromFrame, durationInFrames: defs.durationInFrames,
     x: 0.5, y: 0.25, anchor: "center", fontSize: 64,
     color: "", highlightColor: "", fontFamily: "",
-    enter: "slide-up", exit: "fade",
+    maxWidthPct: defs.maxWidthPct,
+    enter: defs.enter, exit: defs.exit,
     enterDurationInFrames: 12, exitDurationInFrames: 12,
   };
 }
@@ -47,7 +48,10 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idCounter = useRef(0);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [defs, setDefs] = useState<SuggestDefaults>({ x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: "", color: "" });
+  const [defs, setDefs] = useState<SuggestDefaults>({
+    x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: "", color: "",
+    enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80,
+  });
   const defsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -94,7 +98,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
 
   const addOverlay = () => {
     const id = `ov_${Date.now().toString(36)}_${idCounter.current++}`;
-    const o = newOverlay(frame, id);
+    const o = newOverlay(frame, id, defs);
     setOverlays((l) => [...l, o]);
     setSelectedId(o.id);
   };
@@ -222,6 +226,24 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
         <label className="flex flex-col gap-1">Tamanho
           <input aria-label="tamanho padrão" type="range" min={24} max={160} value={defs.fontSize}
             onChange={(e) => patchDefs({ fontSize: Number(e.target.value) })} />
+        </label>
+        <label className="flex flex-col gap-1">Entrada
+          <select aria-label="entrada padrão" value={defs.enter}
+            onChange={(e) => patchDefs({ enter: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
+            {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">Saída
+          <select aria-label="saída padrão" value={defs.exit}
+            onChange={(e) => patchDefs({ exit: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
+            {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">Permanência (s)
+          <input aria-label="permanência padrão" type="number" step={0.5} min={0.5}
+            value={(defs.durationInFrames / fps).toFixed(1)}
+            onChange={(e) => patchDefs({ durationInFrames: Math.max(1, Math.round(Number(e.target.value) * fps)) })}
+            className="bg-zinc-800 rounded px-2 py-1" />
         </label>
       </div>
 

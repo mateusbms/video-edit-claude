@@ -1,4 +1,4 @@
-import type { Overlay } from "./types";
+import type { Overlay, OverlayAnim } from "./types";
 
 export type Suggestion = {
   id: string;
@@ -17,6 +17,10 @@ export type SuggestDefaults = {
   fontSize: number;
   fontFamily: string;
   color: string;
+  enter: OverlayAnim;
+  exit: OverlayAnim;
+  durationInFrames: number;
+  maxWidthPct: number;
 };
 
 export function suggestionToOverlay(s: Suggestion, d: SuggestDefaults, id: string): Overlay {
@@ -33,8 +37,9 @@ export function suggestionToOverlay(s: Suggestion, d: SuggestDefaults, id: strin
     color: d.color,
     highlightColor: "",
     fontFamily: d.fontFamily,
-    enter: "slide-up",
-    exit: "fade",
+    maxWidthPct: d.maxWidthPct,
+    enter: d.enter,
+    exit: d.exit,
     enterDurationInFrames: 12,
     exitDurationInFrames: 12,
   };
