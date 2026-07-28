@@ -1,5 +1,7 @@
+import functools
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 
 
@@ -113,17 +115,41 @@ def parse_ffmpeg_progress(line: str) -> float | None:
     return None
 
 
-def cut_segments(src, segments, out_path, total_duration=None, progress_cb=None) -> None:
+@functools.lru_cache(maxsize=1)
+def _vt_available() -> bool:
+    """True em macOS com o encoder h264_videotoolbox disponível no ffmpeg."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
+                             capture_output=True, text=True)
+        return "h264_videotoolbox" in out.stdout
+    except Exception:
+        return False
+
+
+def _decode_args() -> list[str]:
+    return ["-hwaccel", "videotoolbox"] if _vt_available() else []
+
+
+def _video_encoder_args(bitrate: str = "10M") -> list[str]:
+    if _vt_available():
+        return ["-c:v", "h264_videotoolbox", "-b:v", bitrate]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
+
+
+def cut_segments(src, segments, out_path, total_duration=None, progress_cb=None, scale=None) -> None:
     if not segments:
         raise ValueError("nenhum segmento para cortar")
     between = build_select_expr(segments)
     vf = f"select='{between}',setpts=N/FRAME_RATE/TB"
+    if scale:
+        vf += f",{scale}"
     af = f"aselect='{between}',asetpts=N/SR/TB"
-    proc = subprocess.Popen(
-        ["ffmpeg", "-y", "-i", src, "-vf", vf, "-af", af,
-         "-progress", "pipe:1", "-nostats", out_path],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-    )
+    cmd = ["ffmpeg", "-y", *_decode_args(), "-i", src,
+           "-vf", vf, "-af", af, *_video_encoder_args(), "-c:a", "aac",
+           "-progress", "pipe:1", "-nostats", out_path]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     for line in proc.stdout:
         t = parse_ffmpeg_progress(line)
         if t is not None and progress_cb and total_duration:

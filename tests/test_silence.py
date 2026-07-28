@@ -107,6 +107,46 @@ def test_invert_ranges_beyond_duration_keeps_all():
     assert [(s.start, s.end) for s in keep] == [(0.0, 3.0)]
 
 
+def test_cut_segments_uses_videotoolbox_and_scale(monkeypatch):
+    import pipeline.silence as sil
+    monkeypatch.setattr(sil, "_vt_available", lambda: True)
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = iter(["out_time_us=1000000\n"])
+        def wait(self): return 0
+
+    def fake_popen(cmd, **kw):
+        captured["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(sil.subprocess, "Popen", fake_popen)
+    sil.cut_segments("in.mp4", [Segment(0.0, 2.0)], "out.mp4", scale="scale=1080:1920")
+    cmd = captured["cmd"]
+    assert "-hwaccel" in cmd and "videotoolbox" in cmd
+    assert "h264_videotoolbox" in cmd
+    vf = cmd[cmd.index("-vf") + 1]
+    assert "scale=1080:1920" in vf
+
+
+def test_cut_segments_falls_back_to_libx264(monkeypatch):
+    import pipeline.silence as sil
+    monkeypatch.setattr(sil, "_vt_available", lambda: False)
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = iter([])
+        def wait(self): return 0
+
+    monkeypatch.setattr(sil.subprocess, "Popen", lambda cmd, **kw: (captured.__setitem__("cmd", cmd) or FakeProc()))
+    sil.cut_segments("in.mp4", [Segment(0.0, 2.0)], "out.mp4")
+    cmd = captured["cmd"]
+    assert "libx264" in cmd
+    assert "-hwaccel" not in cmd
+
+
 @_needs_ffmpeg
 def test_detect_silences_finds_gap(tmp_path):
     clip = tmp_path / "c.mp4"
