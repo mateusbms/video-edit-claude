@@ -79,6 +79,11 @@ class CaptionStyleParams(BaseModel):
     fontFamily: str = ""
 
 
+class OrientationParams(BaseModel):
+    # "" = auto (deriva do probe)
+    orientation: Literal["16x9", "9x16", ""] = ""
+
+
 OverlayAnim = Literal["fade", "slide-up", "slide-down", "pop", "none"]
 # aceita hex (#rgb..#rrggbbaa) OU string vazia (=> usa cor da marca)
 HexOrEmpty = Annotated[str, StringConstraints(pattern=r"^(#[0-9a-fA-F]{3,8})?$")]

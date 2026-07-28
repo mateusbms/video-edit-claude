@@ -10,11 +10,11 @@ from api import render as render_mod
 from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
     update_brand_kit, update_caption_style, update_config,
-    update_hook_card_frames, update_whisper_model,
+    update_hook_card_frames, update_orientation, update_whisper_model,
 )
 from api.models import (
     CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
-    Hook, OverlayParams, RefineParams, RenderParams,
+    Hook, OrientationParams, OverlayParams, RefineParams, RenderParams,
     SuggestDefaults, Suggestion, TranscribeParams,
 )
 from api.progress import run_with_progress
@@ -65,6 +65,13 @@ def read_job(slug: str):
     state.has_render_16x9 = (output_root / f"{slug}-16x9.mp4").exists()
     state.has_render_9x16 = (output_root / f"{slug}-9x16.mp4").exists()
     return state.model_dump()
+
+
+@router.put("/jobs/{slug}/orientation")
+def set_orientation(slug: str, params: OrientationParams):
+    jobs_root, *_ = _roots()
+    update_orientation(slug, jobs_root, params.orientation)
+    return {"ok": True, "orientation": get_state(slug, jobs_root).orientation}
 
 
 @router.post("/jobs/{slug}/cut")
