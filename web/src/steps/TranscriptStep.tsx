@@ -4,7 +4,8 @@ import { CaptionOverlay } from "../components/CaptionOverlay";
 import { ProgressBar } from "../components/ProgressBar";
 import { BrandKitPicker } from "../components/BrandKitPicker";
 import { effectiveCaptionStyle } from "../captionStyle";
-import { previewScaleFor, type Orientation } from "../frame";
+import { frameSize, previewScaleFor, type Orientation } from "../frame";
+import { maxCaptionBottom } from "../overlayGeom";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
 import { FONTS } from "../fonts";
@@ -53,6 +54,12 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
     setCapStyle(nextStyle);
     putCaptionStyle(slug, nextStyle).catch(() => {});
   };
+
+  // Teto da posição: a legenda pode subir até encostar no topo do frame, e o
+  // frame depende da orientação (1080 de altura no 16:9, 1920 no 9:16). Fonte
+  // maior come esse teto, então o `bottom` é reduzido junto quando ela cresce —
+  // senão o controle mostraria uma posição diferente da que vai renderizar.
+  const maxBottom = maxCaptionBottom(capStyle.fontSize, frameSize(orientation).height);
 
   const transcribe = async () => {
     setBusy(true); setErr(null); setStage("solicitado"); setProg(null);
@@ -121,6 +128,11 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
           <CaptionOverlay
             lines={lines} currentTime={now} scale={previewScale}
             style={effectiveCaptionStyle(capStyle, capResolved)}
+            maxBottom={maxBottom}
+            // durante o arraste só o estado local muda; o PUT vai no fim do
+            // gesto, senão seria um por movimento do mouse
+            onDragBottom={(bottom) => setCapStyle({ ...capStyle, bottom })}
+            onDragEnd={() => putCaptionStyle(slug, capStyle).catch(() => {})}
           />
         </div>
       )}
@@ -128,10 +140,15 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
         <div className="flex flex-wrap gap-4 items-end bg-zinc-900 border border-zinc-800 rounded p-3 text-sm">
           <label className="flex flex-col gap-1">Tamanho da legenda
             <input aria-label="tamanho da legenda" type="range" min={24} max={120} value={capStyle.fontSize}
-              onChange={(e) => saveStyle({ ...capStyle, fontSize: Number(e.target.value) })} />
+              onChange={(e) => {
+                const fontSize = Number(e.target.value);
+                const teto = maxCaptionBottom(fontSize, frameSize(orientation).height);
+                saveStyle({ ...capStyle, fontSize, bottom: Math.min(capStyle.bottom, teto) });
+              }} />
           </label>
           <label className="flex flex-col gap-1">Posição (do rodapé)
-            <input aria-label="posição da legenda" type="range" min={0} max={600} value={capStyle.bottom}
+            <input aria-label="posição da legenda" type="range" min={0} max={maxBottom}
+              value={Math.min(capStyle.bottom, maxBottom)}
               onChange={(e) => saveStyle({ ...capStyle, bottom: Number(e.target.value) })} />
           </label>
           <label className="flex flex-col gap-1">Cor do texto

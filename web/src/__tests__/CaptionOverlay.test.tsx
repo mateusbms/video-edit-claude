@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { CaptionOverlay } from "../components/CaptionOverlay";
 
 afterEach(cleanup);
@@ -84,6 +84,15 @@ describe("paridade com o CaptionLayer do render", () => {
     expect((screen.getByText("olá") as HTMLElement).style.transform).toBe("scale(1)");
   });
 
+  it("não deixa arrastar sem onDragBottom (nos passos onde é só referência)", () => {
+    const { container } = render(
+      <CaptionOverlay lines={lines as any} currentTime={0.2} style={style} scale={0.5} />
+    );
+    const p = container.querySelector("p")!;
+    expect(p.className).not.toMatch(/pointer-events-auto/);
+    expect(p.className).not.toMatch(/cursor-ns-resize/);
+  });
+
   it("esconde a legenda de leitor de tela (palavras sem espaço real no DOM)", () => {
     // As palavras são separadas só por marginRight (CSS), sem caractere " " no
     // DOM — textContent vira "olámundo", colado. Sem aria-hidden, leitor de
@@ -94,5 +103,81 @@ describe("paridade com o CaptionLayer do render", () => {
     );
     const wrap = container.querySelector("div")!;
     expect(wrap.getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("arraste vertical da legenda", () => {
+  const arrastavel = (onDragBottom: (b: number) => void, onDragEnd?: () => void, maxBottom = 1772) => {
+    const { container } = render(
+      <CaptionOverlay lines={lines as any} currentTime={0.2} style={style} scale={0.5}
+        maxBottom={maxBottom} onDragBottom={onDragBottom} onDragEnd={onDragEnd} />
+    );
+    return container.querySelector("p")!;
+  };
+
+  it("vira alça de arraste quando recebe onDragBottom", () => {
+    const p = arrastavel(() => {});
+    expect(p.className).toMatch(/cursor-ns-resize/);
+    expect(p.className).toMatch(/pointer-events-auto/);
+  });
+
+  it("subir o cursor aumenta o bottom, convertendo pela escala do preview", () => {
+    const onDrag = vi.fn();
+    const p = arrastavel(onDrag);
+    fireEvent.pointerDown(p, { pointerId: 1, clientY: 300 });
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 200 });
+    // 100px de tela ÷ escala 0.5 = 200px do frame, somados ao bottom inicial
+    expect(onDrag).toHaveBeenLastCalledWith(style.bottom + 200);
+  });
+
+  it("descer o cursor diminui o bottom", () => {
+    const onDrag = vi.fn();
+    const p = arrastavel(onDrag);
+    fireEvent.pointerDown(p, { pointerId: 1, clientY: 300 });
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 350 });
+    expect(onDrag).toHaveBeenLastCalledWith(style.bottom - 100);
+  });
+
+  it("o gesto é relativo ao ponto onde começou, não à posição do cursor", () => {
+    // o texto não salta para debaixo do cursor no primeiro movimento
+    const onDrag = vi.fn();
+    const p = arrastavel(onDrag);
+    fireEvent.pointerDown(p, { pointerId: 1, clientY: 1000 });
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 1000 });
+    expect(onDrag).toHaveBeenLastCalledWith(style.bottom);
+  });
+
+  it("clampa no teto e no rodapé", () => {
+    const onDrag = vi.fn();
+    const p = arrastavel(onDrag, undefined, 1772);
+    fireEvent.pointerDown(p, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: -9999 });
+    expect(onDrag).toHaveBeenLastCalledWith(1772);
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 9999 });
+    expect(onDrag).toHaveBeenLastCalledWith(0);
+  });
+
+  it("ignora movimento sem arraste em andamento", () => {
+    const onDrag = vi.fn();
+    const p = arrastavel(onDrag);
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 100 });
+    expect(onDrag).not.toHaveBeenCalled();
+  });
+
+  it("avisa o fim do gesto só ao soltar (é quando vale persistir)", () => {
+    const onEnd = vi.fn();
+    const p = arrastavel(() => {}, onEnd);
+    fireEvent.pointerDown(p, { pointerId: 1, clientY: 300 });
+    fireEvent.pointerMove(p, { pointerId: 1, clientY: 250 });
+    expect(onEnd).not.toHaveBeenCalled();
+    fireEvent.pointerUp(p, { pointerId: 1 });
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("soltar sem ter arrastado não dispara persistência", () => {
+    const onEnd = vi.fn();
+    const p = arrastavel(() => {}, onEnd);
+    fireEvent.pointerUp(p, { pointerId: 1 });
+    expect(onEnd).not.toHaveBeenCalled();
   });
 });

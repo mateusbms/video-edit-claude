@@ -12,6 +12,21 @@ export function clientToFraction(
   };
 }
 
+// Altura aproximada do bloco da legenda, em px do frame-alvo: uma linha de
+// texto com o lineHeight 1.2 do CaptionLayer, mais folga. Espelhada em
+// api/jobs.py::_max_caption_bottom — mudar aqui pede mudar lá.
+export function captionBlockHeight(fontSize: number): number {
+  return fontSize * 1.6;
+}
+
+// Maior `bottom` que ainda deixa o bloco inteiro dentro do frame. É o teto do
+// controle de posição: acima disso a legenda começa a sair pelo topo.
+// Aproximação de uma linha — uma legenda que quebra em duas encosta antes, e o
+// preview mostra isso.
+export function maxCaptionBottom(fontSize: number, frameHeight: number): number {
+  return Math.max(0, frameHeight - captionBlockHeight(fontSize));
+}
+
 // Zona (fração da altura) onde a legenda fica, para desenhar como guia de colisão.
 // Aproximação: legenda ancorada no rodapé, altura ~1.6x o fontSize.
 // refHeight é a altura do frame-alvo, que vem de frameSize(orientation) — sem
@@ -20,7 +35,7 @@ export function captionZone(
   style: { bottom: number; fontSize: number },
   refHeight: number,
 ): { top: number; bottom: number } {
-  const hPx = style.fontSize * 1.6;
+  const hPx = captionBlockHeight(style.fontSize);
   const bottom = clamp01(1 - style.bottom / refHeight);
   const top = clamp01(1 - (style.bottom + hPx) / refHeight);
   return { top, bottom };

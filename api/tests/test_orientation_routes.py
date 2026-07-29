@@ -36,6 +36,44 @@ def test_put_rejeita_valor_invalido(client, sample_mp4):
     assert r.status_code == 422
 
 
+def _caption_bottom(tmp_root, slug: str) -> int:
+    import json
+    cfg = tmp_root / "jobs" / slug / "job.config.json"
+    return json.loads(cfg.read_text(encoding="utf-8"))["caption_bottom"]
+
+
+def test_trocar_para_horizontal_baixa_a_legenda_para_dentro_do_frame(client, tmp_root):
+    """`caption_bottom` é px do frame final: 1500 cabe no 9x16 (altura 1920) e
+    joga a legenda para fora do 16x9 (altura 1080)."""
+    client.put("/api/jobs/cb1/orientation", json={"orientation": "9x16"})
+    client.put("/api/jobs/cb1/caption-style",
+               json={"fontSize": 48, "bottom": 1500, "color": "",
+                     "highlightColor": "", "fontFamily": ""})
+    assert _caption_bottom(tmp_root, "cb1") == 1500
+
+    client.put("/api/jobs/cb1/orientation", json={"orientation": "16x9"})
+    assert _caption_bottom(tmp_root, "cb1") == int(1080 - 48 * 1.6)  # 1003
+
+
+def test_trocar_o_formato_nao_mexe_numa_legenda_que_ja_cabe(client, tmp_root):
+    client.put("/api/jobs/cb2/orientation", json={"orientation": "9x16"})
+    client.put("/api/jobs/cb2/caption-style",
+               json={"fontSize": 48, "bottom": 120, "color": "",
+                     "highlightColor": "", "fontFamily": ""})
+    client.put("/api/jobs/cb2/orientation", json={"orientation": "16x9"})
+    assert _caption_bottom(tmp_root, "cb2") == 120
+
+
+def test_put_sem_mudar_a_orientacao_efetiva_preserva_a_legenda(client, tmp_root):
+    """Só a mudança de formato justifica mexer no que o usuário escolheu."""
+    client.put("/api/jobs/cb3/orientation", json={"orientation": "9x16"})
+    client.put("/api/jobs/cb3/caption-style",
+               json={"fontSize": 48, "bottom": 1500, "color": "",
+                     "highlightColor": "", "fontFamily": ""})
+    client.put("/api/jobs/cb3/orientation", json={"orientation": "9x16"})
+    assert _caption_bottom(tmp_root, "cb3") == 1500
+
+
 class FakeProc:
     """Duble do processo do Remotion mockado — só o suficiente para o gen() da rota."""
 

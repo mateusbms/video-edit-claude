@@ -3,7 +3,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from pipeline.job import init_job, load_json, write_json
-from pipeline.orientation import FRAME_SIZES, resolve_orientation
+from pipeline.orientation import FRAME_SIZES, frame_size, resolve_orientation
 from pipeline.recipe import brand_of_kit, resolve_caption_style
 from api.models import CutParams, Hook, JobState, ProbeOut
 
@@ -97,6 +97,17 @@ def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
     write_json(job.dir / "job.config.json", asdict(job.config))
 
 
+def _max_caption_bottom(font_size: int, orientation: str) -> int:
+    """Maior `caption_bottom` que deixa o bloco da legenda dentro do frame.
+
+    Espelho de web/src/overlayGeom.ts::maxCaptionBottom — o 1.6 é a altura
+    aproximada do bloco (uma linha com o lineHeight 1.2 do CaptionLayer, mais
+    folga). Mudar de um lado pede mudar do outro.
+    """
+    _, height = frame_size(orientation)
+    return max(0, int(height - font_size * 1.6))
+
+
 def update_orientation(slug: str, jobs_root: Path, orientation: str) -> None:
     """Grava a orientação escolhida. "" volta ao auto-detectar pelo probe.
 
@@ -112,8 +123,16 @@ def update_orientation(slug: str, jobs_root: Path, orientation: str) -> None:
     job = init_job(jobs_root, slug)
     job.config.orientation = orientation
     write_json(job.dir / "job.config.json", asdict(job.config))
-    if get_state(slug, jobs_root).orientation != before:
+    depois = get_state(slug, jobs_root).orientation
+    if depois != before:
         (job.dir / "edit-recipe.json").unlink(missing_ok=True)
+        # `caption_bottom` é px do frame final, então o que era válido no 9x16
+        # (altura 1920) pode jogar a legenda para fora do 16x9 (altura 1080).
+        job.config.caption_bottom = min(
+            job.config.caption_bottom,
+            _max_caption_bottom(job.config.caption_font_size, depois),
+        )
+        write_json(job.dir / "job.config.json", asdict(job.config))
 
 
 def suggest_hook(transcript: list[dict]) -> Hook:

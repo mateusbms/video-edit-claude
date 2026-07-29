@@ -67,6 +67,51 @@ describe("TranscriptStep progress", () => {
     expect((select as HTMLSelectElement).value).toBe("Inter");
   });
 
+  it("a posição alcança o topo do frame, e o teto segue a orientação", async () => {
+    const api = await import("../api");
+    (api.getJob as any).mockResolvedValueOnce({
+      orientation: "9x16",
+      captionStyle: { fontSize: 92, bottom: 120, color: "", highlightColor: "", fontFamily: "" },
+      brandKitSlug: "",
+    });
+    render(<TranscriptStep {...props} />);
+    const pos = await screen.findByLabelText(/posição da legenda/i);
+    // 1920 de altura menos o bloco (92 * 1.6): a legenda sobe a tela inteira,
+    // não os 600px fixos de antes
+    await waitFor(() => expect((pos as HTMLInputElement).max).toBe("1772.8"));
+    expect(Number((pos as HTMLInputElement).max)).toBeGreaterThan(600);
+  });
+
+  it("no 16x9 o teto cai junto com a altura do frame", async () => {
+    const api = await import("../api");
+    (api.getJob as any).mockResolvedValueOnce({
+      orientation: "16x9",
+      captionStyle: { fontSize: 92, bottom: 120, color: "", highlightColor: "", fontFamily: "" },
+      brandKitSlug: "",
+    });
+    render(<TranscriptStep {...props} />);
+    const pos = await screen.findByLabelText(/posição da legenda/i);
+    await waitFor(() => expect((pos as HTMLInputElement).max).toBe("932.8"));
+  });
+
+  it("aumentar a fonte puxa a posição para baixo do novo teto", async () => {
+    // o bloco cresce com a fonte: sem reduzir o bottom junto, o controle
+    // mostraria uma posição que o render não consegue desenhar
+    const api = await import("../api");
+    (api.getJob as any).mockResolvedValueOnce({
+      orientation: "16x9",
+      captionStyle: { fontSize: 48, bottom: 950, color: "", highlightColor: "", fontFamily: "" },
+      brandKitSlug: "",
+    });
+    render(<TranscriptStep {...props} />);
+    const size = await screen.findByLabelText(/tamanho da legenda/i);
+    fireEvent.change(size, { target: { value: "120" } });
+    await waitFor(() =>
+      expect(api.putCaptionStyle as any).toHaveBeenCalledWith("v1",
+        expect.objectContaining({ fontSize: 120, bottom: 888 })),  // 1080 - 120*1.6
+    );
+  });
+
   it("escala a legenda pela largura do frame-alvo (9x16 = 1080), não por 1920 fixo", async () => {
     // jsdom devolve clientWidth 0; fingimos um <video> vertical de 304px
     const spy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(304);

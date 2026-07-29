@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clientToFraction, captionZone, overlapsCaption, overlapsInTime, snapPosition } from "../overlayGeom";
+import { clientToFraction, captionZone, maxCaptionBottom, overlapsCaption, overlapsInTime, snapPosition } from "../overlayGeom";
 import { frameSize } from "../frame";
 
 describe("clientToFraction", () => {
@@ -45,6 +45,32 @@ describe("captionZone com a altura do frame-alvo", () => {
     const v = captionZone(style, frameSize("9x16").height);
     const h = captionZone(style, frameSize("16x9").height);
     expect(v.bottom).not.toBeCloseTo(h.bottom, 3);
+  });
+});
+
+describe("maxCaptionBottom", () => {
+  it("deixa a legenda subir quase até o topo do vertical", () => {
+    // 1920 de altura menos o bloco (92 * 1.6 = 147,2)
+    expect(maxCaptionBottom(92, frameSize("9x16").height)).toBeCloseTo(1772.8, 6);
+  });
+
+  it("é bem menor no horizontal, que tem 1080 de altura", () => {
+    expect(maxCaptionBottom(92, frameSize("16x9").height)).toBeCloseTo(932.8, 6);
+  });
+
+  it("fonte maior come o teto", () => {
+    const h = frameSize("9x16").height;
+    expect(maxCaptionBottom(120, h)).toBeLessThan(maxCaptionBottom(48, h));
+  });
+
+  it("nunca fica negativo quando a fonte não cabe no frame", () => {
+    expect(maxCaptionBottom(2000, frameSize("16x9").height)).toBe(0);
+  });
+
+  it("no topo do alcance a faixa da legenda encosta no topo do frame", () => {
+    const h = frameSize("9x16").height;
+    const z = captionZone({ bottom: maxCaptionBottom(92, h), fontSize: 92 }, h);
+    expect(z.top).toBeCloseTo(0, 6);
   });
 });
 
