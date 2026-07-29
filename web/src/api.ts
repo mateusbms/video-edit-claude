@@ -101,6 +101,12 @@ export async function putSuggestDefaults(slug: string, d: SuggestDefaults): Prom
   }));
 }
 
+// Dispara a geração de sugestões pelo `claude` local (backend chama o CLI).
+// Devolve a lista já validada; o painel popula direto, sem novo GET.
+export async function generateSuggestions(slug: string): Promise<Suggestion[]> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/suggest`, { method: "POST" }));
+}
+
 export async function runRecipe(slug: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/recipe`, { method: "POST" }));
 }

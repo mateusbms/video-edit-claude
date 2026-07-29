@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseSSEChunk, getOverlays, putOverlays } from "../api";
+import { parseSSEChunk, getOverlays, putOverlays, generateSuggestions } from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -39,5 +39,29 @@ describe("overlays api", () => {
     expect(put.url).toBe("/api/jobs/s1/overlays");
     expect(JSON.parse(put.init.body)[0].id).toBe("ov_a");
     expect(got[0].id).toBe("ov_a");
+  });
+});
+
+describe("generateSuggestions", () => {
+  it("faz POST /suggest e devolve a lista gerada", async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      return { ok: true, json: async () => ([{ id: "sug_01", text: "gerada" }]) } as any;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const got = await generateSuggestions("s1");
+    vi.unstubAllGlobals();
+    const post = calls.find((c) => c.init?.method === "POST");
+    expect(post.url).toBe("/api/jobs/s1/suggest");
+    expect(got[0].id).toBe("sug_01");
+  });
+
+  it("propaga a mensagem de erro do backend", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => (
+      { ok: false, statusText: "erro", json: async () => ({ detail: "claude não encontrado" }) } as any
+    )));
+    await expect(generateSuggestions("s1")).rejects.toThrow(/claude não encontrado/);
+    vi.unstubAllGlobals();
   });
 });

@@ -151,6 +151,82 @@ describe("OverlaysStep", () => {
     expect(screen.queryByDisplayValue("Aplica isto")).not.toBeInTheDocument();
   });
 
+  it("gerar sugestões chama POST /suggest e popula o painel sem recarregar", async () => {
+    const calls: any[] = [];
+    const f = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      if (url.endsWith("/overlays") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/transcript"))
+        return { ok: true, json: async () => ([{ text: "fala", start: 0, end: 2, words: [] }]) } as any;
+      if (url.endsWith("/hook") && (!init || !init.method))
+        return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+      if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "", color: "", enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80 }) } as any;
+      if (url.endsWith("/suggest") && init?.method === "POST")
+        return { ok: true, json: async () => ([{ id: "sug_09", text: "Sugestão gerada", fromFrame: 60, durationInFrames: 60, kind: "short", angle: "prova", source: "fala" }]) } as any;
+      if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
+        return { ok: true, json: async () => ({ slug: "s1", probe: { width: 1080, height: 1920, fps: 30, duration: 10 }, orientation: "9x16" }) } as any;
+      return { ok: true, json: async () => ({ ok: true }) } as any;
+    });
+    vi.stubGlobal("fetch", f);
+    render(<OverlaysStep {...props} />);
+    const btn = await screen.findByRole("button", { name: /gerar sugest/i });
+    fireEvent.click(btn);
+    expect(await screen.findByText("Sugestão gerada")).toBeInTheDocument();
+    const post = calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/suggest"));
+    expect(post).toBeTruthy();
+  });
+
+  it("botão gerar sugestões fica desabilitado sem transcrição", async () => {
+    const f = vi.fn(async (url: string, init?: any) => {
+      if (url.endsWith("/overlays") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/transcript")) return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/hook") && (!init || !init.method))
+        return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+      if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "", color: "", enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80 }) } as any;
+      if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
+        return { ok: true, json: async () => ({ slug: "s1", probe: { fps: 30 } }) } as any;
+      return { ok: true, json: async () => ({ ok: true }) } as any;
+    });
+    vi.stubGlobal("fetch", f);
+    render(<OverlaysStep {...props} />);
+    const btn = await screen.findByRole("button", { name: /gerar sugest/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it("erro ao gerar não apaga as sugestões existentes", async () => {
+    const f = vi.fn(async (url: string, init?: any) => {
+      if (url.endsWith("/overlays") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => [] } as any;
+      if (url.endsWith("/transcript"))
+        return { ok: true, json: async () => ([{ text: "fala", start: 0, end: 2, words: [] }]) } as any;
+      if (url.endsWith("/hook") && (!init || !init.method))
+        return { ok: true, json: async () => ({ title: "HOOK", subtitle: "", duration_frames: 90 }) } as any;
+      if (url.endsWith("/suggestions") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ([{ id: "sug_01", text: "existente", fromFrame: 30, durationInFrames: 60, kind: "short", angle: "", source: "" }]) } as any;
+      if (url.endsWith("/suggest-defaults") && (!init || !init.method || init.method === "GET"))
+        return { ok: true, json: async () => ({ x: 0.5, y: 0.12, anchor: "center", fontSize: 72, fontFamily: "", color: "", enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80 }) } as any;
+      if (url.endsWith("/suggest") && init?.method === "POST")
+        return { ok: false, statusText: "erro", json: async () => ({ detail: "claude falhou" }) } as any;
+      if (url.match(/\/jobs\/.+$/) && (!init || !init.method))
+        return { ok: true, json: async () => ({ slug: "s1", probe: { fps: 30 }, orientation: "16x9" }) } as any;
+      return { ok: true, json: async () => ({ ok: true }) } as any;
+    });
+    vi.stubGlobal("fetch", f);
+    render(<OverlaysStep {...props} />);
+    await screen.findByText("existente");
+    fireEvent.click(await screen.findByRole("button", { name: /gerar sugest/i }));
+    await waitFor(() => expect(screen.getByText(/claude falhou/i)).toBeInTheDocument());
+    expect(screen.getByText("existente")).toBeInTheDocument();
+  });
+
   it("avisa quando dois textos se sobrepõem no tempo", async () => {
     render(<OverlaysStep {...props} />);
     const addBtn = await screen.findByRole("button", { name: /texto/i });

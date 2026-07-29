@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   getOverlays, putOverlays, runRecipe, mediaUrl, getJob, getTranscript, getHook,
   getSuggestions, putSuggestions, getSuggestDefaults, putSuggestDefaults,
+  generateSuggestions,
 } from "../api";
 import { OverlayPreview } from "../components/OverlayPreview";
 import { OverlayTimeline } from "../components/OverlayTimeline";
@@ -51,6 +52,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idCounter = useRef(0);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [generating, setGenerating] = useState(false);
   const [defs, setDefs] = useState<SuggestDefaults>({
     x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: "", color: "",
     enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80,
@@ -139,6 +141,19 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
 
   const reloadSuggestions = () => { getSuggestions(slug).then(setSuggestions).catch(() => {}); };
+
+  // Gera pelo `claude` local. O painel popula direto com a resposta; um erro
+  // aparece inline e preserva as sugestões atuais.
+  const generate = async () => {
+    setGenerating(true); setErr(null);
+    try {
+      setSuggestions(await generateSuggestions(slug));
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // devolve true se salvou; false em erro (para não avançar de passo em falha).
   const save = async (): Promise<boolean> => {
@@ -256,10 +271,21 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <div className="bg-zinc-900 border border-zinc-800 rounded p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Sugestões ({suggestions.length})</span>
-          <button aria-label="recarregar sugestões" onClick={reloadSuggestions} className="text-xs px-2 py-1 bg-zinc-800 rounded">↻ Recarregar</button>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="gerar sugestões"
+              onClick={generate}
+              disabled={generating || lines.length === 0}
+              title={lines.length === 0 ? "Transcreva o vídeo antes de gerar sugestões" : undefined}
+              className="text-xs px-2 py-1 bg-emerald-600 rounded disabled:opacity-40"
+            >
+              {generating ? "Gerando… (~1min)" : "✨ Gerar sugestões"}
+            </button>
+            <button aria-label="recarregar sugestões" onClick={reloadSuggestions} className="text-xs px-2 py-1 bg-zinc-800 rounded">↻ Recarregar</button>
+          </div>
         </div>
         {suggestions.length === 0 ? (
-          <p className="text-xs text-zinc-500">Peça no chat: “gera sugestões pro {slug}”. Depois clique ↻ Recarregar.</p>
+          <p className="text-xs text-zinc-500">Clique <strong>✨ Gerar sugestões</strong> para o Claude local propor textos a partir da transcrição. (Ou peça no chat: “gera sugestões pro {slug}” e clique ↻ Recarregar.)</p>
         ) : (
           <ul className="space-y-2">
             {suggestions.map((s) => (

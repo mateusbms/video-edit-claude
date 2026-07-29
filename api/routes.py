@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import shutil
 from pathlib import Path
@@ -6,12 +7,18 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
+from pydantic import ValidationError
+
 from api import render as render_mod
+from api.claude_cli import (
+    ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
+)
 from api.jobs import (
     allowed_file_path, get_state, suggest_hook,
     update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_whisper_model,
 )
+from api.suggest_prompt import build_prompt
 from api.models import (
     CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
     Hook, OrientationParams, OverlayParams, RefineParams,
@@ -159,6 +166,53 @@ def put_suggestions(slug: str, suggestions: list[Suggestion]):
     p = Path(jobs_root) / slug / "suggestions.json"
     write_json(p, [s.model_dump() for s in suggestions])
     return {"ok": True}
+
+
+@router.post("/jobs/{slug}/suggest")
+def run_suggest(slug: str):
+    """Gera suggestions.json chamando o `claude` local (sem API key).
+
+    Síncrono: o `claude -p` não reporta progresso. O backend é dono do arquivo —
+    monta o prompt, recebe texto, valida como list[Suggestion], e só então grava.
+    Uma geração ruim nunca destrói a anterior (a gravação vem depois da validação).
+    """
+    jobs_root, *_ = _roots()
+    job_dir = Path(jobs_root) / slug
+
+    tpath = job_dir / "transcript.json"
+    if not tpath.exists():
+        raise HTTPException(status_code=409, detail="sem transcrição: transcreva antes de gerar sugestões")
+    transcript = load_json(tpath)
+
+    hook = load_json(job_dir / "hook.json") if (job_dir / "hook.json").exists() else {}
+    defaults = (
+        load_json(job_dir / "suggest-defaults.json")
+        if (job_dir / "suggest-defaults.json").exists()
+        else SuggestDefaults().model_dump()
+    )
+    state = get_state(slug, jobs_root)
+    fps = state.probe.fps if state.probe else 30.0
+
+    prompt = build_prompt(transcript, hook, defaults, fps=fps, orientation=state.orientation)
+
+    try:
+        raw = run_claude(prompt)
+    except ClaudeCLINotFound as e:
+        raise HTTPException(status_code=503, detail=f"claude não encontrado no PATH: {e}")
+    except ClaudeCLITimeout as e:
+        raise HTTPException(status_code=504, detail=f"claude excedeu o tempo: {e}")
+    except ClaudeCLIError as e:
+        raise HTTPException(status_code=502, detail=f"claude falhou: {e}")
+
+    try:
+        data = json.loads(raw)
+        suggestions = [Suggestion(**s) for s in data]
+    except (json.JSONDecodeError, ValidationError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=f"resposta do claude fora do schema: {e}")
+
+    dumped = [s.model_dump() for s in suggestions]
+    write_json(job_dir / "suggestions.json", dumped)
+    return dumped
 
 
 @router.get("/jobs/{slug}/suggest-defaults")

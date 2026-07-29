@@ -1,5 +1,12 @@
 # Gerar sugestões de texto (Fase D, sem API)
 
+> **Atalho rápido:** no passo **Textos** há o botão **✨ Gerar sugestões**, ao lado do
+> ↻ Recarregar. Ele dispara o mesmo trabalho chamando o binário `claude` local (assinatura
+> do usuário, sem API key) e popula o painel direto — sem precisar de uma sessão de chat
+> aberta. O caminho manual abaixo continua válido e rende sugestões melhores quando o Claude
+> tem o contexto do projeto todo; o botão é a opção rápida, não um substituto.
+
+
 As sugestões NÃO são geradas por código/servidor. São geradas pelo **Claude da sessão**
 (plano do usuário) e gravadas num arquivo que o editor lê. Este é o "run" que o usuário
 dispara no chat.
