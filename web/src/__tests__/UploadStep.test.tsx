@@ -185,6 +185,16 @@ describe("avisos de formato cruzado", () => {
 });
 
 describe("UploadStep — projeto novo e colisão de nome", () => {
+  beforeEach(() => {
+    uploadJob.mockReset();
+    putOrientation.mockReset();
+    putOrientation.mockResolvedValue(undefined);
+    getJob.mockReset();
+    getJob.mockImplementation(async () => ({}) as any);
+    listJobs.mockReset();
+    listJobs.mockImplementation(async () => []);
+  });
+
   it("num projeto novo, sugere um nome livre em vez do slug atual", async () => {
     const api = await import("../api");
     (api.listJobs as any).mockResolvedValueOnce([
@@ -227,17 +237,45 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
 
   it("criar novo projeto troca o nome e não sobrescreve nada", async () => {
     const api = await import("../api");
-    (api.listJobs as any).mockResolvedValue([{ slug: "A1" }]);
+    // O campo nasce em "A2" (só "A1" está ocupado)...
+    (api.listJobs as any).mockResolvedValueOnce([{ slug: "A1" }]);
+    render(<UploadStep {...props} slug="" />);
+    const campo = (await screen.findByLabelText(/nome do projeto/i)) as HTMLInputElement;
+    await waitFor(() => expect(campo.value).toBe("A2"));
+
+    // ...mas o usuário reusa "A1" na mão, como no incidente original.
+    fireEvent.change(campo, { target: { value: "A1" } });
     (api.uploadJob as any).mockRejectedValueOnce(
       new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
     );
-    render(<UploadStep {...props} />);
     fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
       target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
     });
     fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    // Aqui o campo está em "A1" (o nome que colidiu) — se o onClick de
+    // "Criar novo projeto" for removido, o teste falha porque o valor
+    // continuaria "A1" em vez de voltar para "A2".
     fireEvent.click(await screen.findByRole("button", { name: /criar novo/i }));
-    const campo = screen.getByLabelText(/nome do projeto/i) as HTMLInputElement;
     await waitFor(() => expect(campo.value).toBe("A2"));
+  });
+
+  it("abrir o existente troca o slug e avança sem reenviar", async () => {
+    const api = await import("../api");
+    const setSlug = vi.fn();
+    const next = vi.fn();
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} setSlug={setSlug} next={next} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /abrir o existente/i }));
+    expect(setSlug).toHaveBeenCalledWith("A1");
+    expect(next).toHaveBeenCalled();
+    // Abrir o projeto existente não pode disparar upload nenhum — só a
+    // chamada original, que resultou no 409.
+    expect((api.uploadJob as any).mock.calls.length).toBe(1);
   });
 });
