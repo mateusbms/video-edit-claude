@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listJobs, putTitle, deleteJob, deleteSource } from "./api";
 import type { JobSummary } from "./types";
 
@@ -30,6 +30,29 @@ function quando(epochSegundos: number): string {
   });
 }
 
+/** "a", "a e b", "a, b e c" — nunca "a, b, c" seco demais para uma frase. */
+function listaNatural(itens: string[]): string {
+  if (itens.length === 0) return "nada";
+  if (itens.length === 1) return itens[0];
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
+/**
+ * O que se perde ao apagar o projeto — a partir do que ele de fato tem, não
+ * de uma lista fixa. Um projeto recém-criado não tem transcrição pra perder,
+ * e um projeto que nunca gerou receita de render não tem hook nem textos.
+ */
+function itensPerdidos(j: JobSummary): string[] {
+  return [
+    j.has_source && "o vídeo original",
+    j.has_trimmed && "o corte",
+    j.has_transcript && "a transcrição",
+    j.has_hook && "o hook",
+    j.has_recipe && "os textos",
+    j.has_recipe && "a receita de render",
+  ].filter((x): x is string => Boolean(x));
+}
+
 // Uma linha por vez em modo de edição ou confirmação — duas confirmações
 // destrutivas abertas ao mesmo tempo é convite para clicar na errada.
 type Modo = { slug: string; tipo: "renomeando" | "excluindo" | "liberando" } | null;
@@ -42,6 +65,13 @@ export const ProjectsScreen: React.FC<{
   const [err, setErr] = useState<string | null>(null);
   const [modo, setModo] = useState<Modo>(null);
   const [rascunho, setRascunho] = useState("");
+  // Slug com uma ação destrutiva em curso. É ref (não state) de propósito:
+  // dois cliques no mesmo evento (antes do repaint) veem o mesmo state até o
+  // componente re-renderizar, mas a ref muda na hora — o segundo clique
+  // precisa enxergar a mudança do primeiro imediatamente, não só depois do
+  // próximo render.
+  const emAndamentoRef = useRef<string | null>(null);
+  const [emAndamento, setEmAndamento] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -54,10 +84,14 @@ export const ProjectsScreen: React.FC<{
   type Tipo = "renomeando" | "excluindo" | "liberando";
   const emModo = (j: JobSummary, tipo: Tipo) =>
     modo?.slug === j.slug && modo?.tipo === tipo;
+  // Qualquer modo (renomear ou uma das confirmações) — usado para esconder a
+  // barra de ações e evitar dois blocos de UI concorrendo na mesma linha.
+  const emAlgumModo = (j: JobSummary) => modo?.slug === j.slug;
 
   const salvarTitulo = async (j: JobSummary) => {
     const novo = rascunho.trim();
     setModo(null);
+    setErr(null);
     try {
       await putTitle(j.slug, novo);
       setJobs((l) => (l ?? []).map((x) => (x.slug === j.slug ? { ...x, title: novo } : x)));
@@ -67,17 +101,30 @@ export const ProjectsScreen: React.FC<{
   };
 
   const excluir = async (j: JobSummary) => {
-    setModo(null);
+    // Clique duplo no "Apagar mesmo assim" antes do repaint: o diálogo some
+    // só depois do estado atualizar, então o segundo clique pode chegar
+    // enquanto o botão ainda está na tela. A ref pega isso na hora.
+    if (emAndamentoRef.current) return;
+    emAndamentoRef.current = j.slug;
+    setEmAndamento(j.slug);
+    setErr(null);
     try {
       await deleteJob(j.slug);
       setJobs((l) => (l ?? []).filter((x) => x.slug !== j.slug));
     } catch {
       setErr("não consegui apagar o projeto");
+    } finally {
+      emAndamentoRef.current = null;
+      setEmAndamento(null);
+      setModo(null);
     }
   };
 
   const liberar = async (j: JobSummary) => {
-    setModo(null);
+    if (emAndamentoRef.current) return;
+    emAndamentoRef.current = j.slug;
+    setEmAndamento(j.slug);
+    setErr(null);
     try {
       await deleteSource(j.slug);
       setJobs((l) => (l ?? []).map((x) => (
@@ -87,6 +134,10 @@ export const ProjectsScreen: React.FC<{
       )));
     } catch {
       setErr("não consegui liberar o espaço");
+    } finally {
+      emAndamentoRef.current = null;
+      setEmAndamento(null);
+      setModo(null);
     }
   };
 
@@ -143,7 +194,7 @@ export const ProjectsScreen: React.FC<{
                 )}
               </div>
 
-              {!emModo(j, "renomeando") && (
+              {!emAlgumModo(j) && (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     aria-label={`abrir ${j.slug}`}
@@ -183,18 +234,23 @@ export const ProjectsScreen: React.FC<{
               <div role="alertdialog" aria-label={`confirmar exclusão de ${j.slug}`}
                    className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
                 <p className="text-red-200">
-                  Apagar <strong>{j.title || j.slug}</strong> descarta o vídeo, o corte, a
-                  transcrição e os textos. O vídeo já exportado é mantido.
+                  Apagar <strong>{j.title || j.slug}</strong> descarta {listaNatural(itensPerdidos(j))}.
+                  {(j.has_render_16x9 || j.has_render_9x16) && " O vídeo já exportado é mantido."}
                 </p>
                 <div className="flex gap-2">
                   <button
                     aria-label={`confirmar exclusão de ${j.slug}`}
                     onClick={() => excluir(j)}
-                    className="px-3 py-1 bg-red-900 rounded"
+                    disabled={emAndamento === j.slug}
+                    className="px-3 py-1 bg-red-900 rounded disabled:opacity-50"
                   >
                     Apagar mesmo assim
                   </button>
-                  <button onClick={() => setModo(null)} className="px-3 py-1 bg-zinc-800 rounded">
+                  <button
+                    onClick={() => setModo(null)}
+                    disabled={emAndamento === j.slug}
+                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
+                  >
                     Desistir
                   </button>
                 </div>
@@ -206,7 +262,8 @@ export const ProjectsScreen: React.FC<{
                    className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
                 <p className="text-amber-200">
                   Libera <strong>{tamanho(j.bytes_source)}</strong> apagando o vídeo original.
-                  Você continua podendo editar textos, legendas e renderizar — mas
+                  Você continua podendo transcrever, fazer cortes manuais, editar textos,
+                  legendas e renderizar — mas
                   <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a
                   resolução original se perde.
                 </p>
@@ -214,11 +271,16 @@ export const ProjectsScreen: React.FC<{
                   <button
                     aria-label={`confirmar liberar espaço de ${j.slug}`}
                     onClick={() => liberar(j)}
-                    className="px-3 py-1 bg-amber-800 rounded"
+                    disabled={emAndamento === j.slug}
+                    className="px-3 py-1 bg-amber-800 rounded disabled:opacity-50"
                   >
                     Confirmar
                   </button>
-                  <button onClick={() => setModo(null)} className="px-3 py-1 bg-zinc-800 rounded">
+                  <button
+                    onClick={() => setModo(null)}
+                    disabled={emAndamento === j.slug}
+                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
+                  >
                     Desistir
                   </button>
                 </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 
 const { listJobs, putTitle, deleteJob, deleteSource } = vi.hoisted(() => ({
   listJobs: vi.fn(),
@@ -138,6 +138,61 @@ describe("ProjectsScreen — excluir", () => {
     expect(api.deleteJob).not.toHaveBeenCalled();
     expect(screen.getByText("A1")).toBeInTheDocument();
   });
+
+  it("lista o que o projeto realmente tem, nomeando hook e receita de render", async () => {
+    const api = await import("../api");
+    const completo = { ...projeto, has_hook: true, has_recipe: true };
+    (api.listJobs as any).mockResolvedValueOnce([completo]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso.textContent).toMatch(/transcrição/i);
+    expect(aviso.textContent).toMatch(/hook/i);
+    expect(aviso.textContent).toMatch(/receita de render/i);
+    expect(aviso.textContent).toMatch(/vídeo já exportado/i);
+  });
+
+  it("não menciona o que o projeto não tem", async () => {
+    const api = await import("../api");
+    const soVideo = {
+      ...projeto,
+      has_trimmed: false, has_transcript: false, has_hook: false, has_recipe: false,
+      has_render_16x9: false, has_render_9x16: false,
+    };
+    (api.listJobs as any).mockResolvedValueOnce([soVideo]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso.textContent).not.toMatch(/transcrição/i);
+    expect(aviso.textContent).not.toMatch(/vídeo já exportado/i);
+  });
+
+  it("esconde a barra de ações enquanto a confirmação está aberta", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(screen.queryByRole("button", { name: /renomear A1/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /abrir A1/i })).not.toBeInTheDocument();
+  });
+
+  it("dois cliques seguidos no confirmar chamam deleteJob uma única vez", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const confirmar = await screen.findByRole("button", { name: /confirmar exclusão/i });
+    // Um único `act` em volta dos dois cliques simula o clique duplo antes do
+    // repaint: sem isso, o primeiro `fireEvent.click` já flusha e desmonta o
+    // diálogo antes do segundo clique ser disparado, mascarando o bug.
+    act(() => {
+      fireEvent.click(confirmar);
+      fireEvent.click(confirmar);
+    });
+    await waitFor(() => expect(api.deleteJob).toHaveBeenCalled());
+    expect(api.deleteJob).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("ProjectsScreen — liberar espaço", () => {
@@ -168,5 +223,35 @@ describe("ProjectsScreen — liberar espaço", () => {
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     await screen.findByText("A1");
     expect(screen.queryByRole("button", { name: /liberar espaço/i })).not.toBeInTheDocument();
+  });
+
+  it("avisa que transcrever e cortes manuais continuam possíveis", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar liberar espaço de A1/i });
+    expect(aviso.textContent).toMatch(/transcrever/i);
+    expect(aviso.textContent).toMatch(/cortes manuais/i);
+  });
+});
+
+describe("ProjectsScreen — erro entre ações", () => {
+  it("erro de uma ação não fica pendurado depois de outra dar certo", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    (api.deleteJob as any).mockRejectedValueOnce(new Error("falhou"));
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão/i }));
+    expect(await screen.findByText(/não consegui apagar/i)).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: /renomear A1/i }));
+    fireEvent.change(screen.getByLabelText(/título de A1/i), { target: { value: "Novo nome" } });
+    fireEvent.click(screen.getByRole("button", { name: /salvar nome de A1/i }));
+    await waitFor(() => expect(api.putTitle).toHaveBeenCalled());
+
+    expect(screen.queryByText(/não consegui apagar/i)).not.toBeInTheDocument();
   });
 });
