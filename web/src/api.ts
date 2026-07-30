@@ -1,5 +1,5 @@
 import type {
-  Hook, JobState, CaptionLine, CutResult, SSEEvent, Overlay,
+  Hook, JobState, CaptionLine, CutResult, SSEEvent, Overlay, JobSummary,
 } from "./types";
 import type { Suggestion, SuggestDefaults } from "./suggestions";
 
@@ -14,11 +14,33 @@ async function jsonOrThrow<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export async function uploadJob(files: File[], slug: string): Promise<{ slug: string; probe: any }> {
+/** O slug já tem trabalho e o upload não foi confirmado como sobrescrita. */
+export class SlugOcupado extends Error {
+  constructor(readonly existente: JobSummary) {
+    super(`o projeto ${existente.slug} já existe`);
+    this.name = "SlugOcupado";
+  }
+}
+
+export async function listJobs(): Promise<JobSummary[]> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs`));
+}
+
+export async function uploadJob(
+  files: File[], slug: string, overwrite = false,
+): Promise<{ slug: string; probe: any }> {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
   fd.append("slug", slug);
-  return jsonOrThrow(await fetch(`${BASE}/jobs`, { method: "POST", body: fd }));
+  fd.append("overwrite", String(overwrite));
+  const r = await fetch(`${BASE}/jobs`, { method: "POST", body: fd });
+  // 409 não é erro de rede: é a pergunta "sobrescrever?" e vem com o projeto
+  // existente no corpo, para a tela montar o diálogo sem outra chamada.
+  if (r.status === 409) {
+    const body = await r.json();
+    throw new SlugOcupado(body.detail as JobSummary);
+  }
+  return jsonOrThrow(r);
 }
 
 export async function getJob(slug: string): Promise<JobState> {

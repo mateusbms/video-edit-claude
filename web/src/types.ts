@@ -76,6 +76,23 @@ export type JobState = {
   brandKitSlug?: string;
 };
 
+// Espelho de api/models.py::JobSummary.
+export type JobSummary = {
+  slug: string;
+  title: string;
+  updated_at: number;
+  orientation: "16x9" | "9x16";
+  has_source: boolean;
+  has_trimmed: boolean;
+  has_transcript: boolean;
+  has_hook: boolean;
+  has_recipe: boolean;
+  has_render_16x9: boolean;
+  has_render_9x16: boolean;
+  bytes_source: number;
+  bytes_total: number;
+};
+
 export type SSEEvent =
   | { event: "progress"; data: { stage?: string; format?: string; n?: number; total?: number; kind?: string } }
   | { event: "done"; data: { ok: true } }
