@@ -82,3 +82,20 @@ def test_config_corrompido_nao_desliga_a_guarda(client, tmp_root, sample_mp4):
 
     assert r.status_code == 409
     assert (d / "transcript.json").exists()
+
+
+def test_guarda_conta_overlays_como_trabalho(client, tmp_root, sample_mp4):
+    """stage_ingest apaga overlays.json; a guarda precisa protegê-lo."""
+    d = tmp_root / "jobs" / "ov"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text(json.dumps({}), encoding="utf-8")
+    (d / "overlays.json").write_text("[]", encoding="utf-8")
+    assert _upload(client, "ov", sample_mp4).status_code == 409
+
+
+def test_guarda_conta_sugestoes_como_trabalho(client, tmp_root, sample_mp4):
+    d = tmp_root / "jobs" / "sg"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text(json.dumps({}), encoding="utf-8")
+    (d / "suggestions.json").write_text("[]", encoding="utf-8")
+    assert _upload(client, "sg", sample_mp4).status_code == 409

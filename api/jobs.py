@@ -39,6 +39,20 @@ def cut_result(job_dir: Path) -> CutResult | None:
     )
 
 
+def tem_trabalho(job_dir: Path) -> bool:
+    """Se há algo a perder ao trocar o vídeo deste projeto.
+
+    Fonte única: o source mais tudo que `stage_ingest` apaga ao reingerir.
+    Manter uma segunda lista à mão já tinha deixado `overlays.json` e
+    `suggestions.json` de fora da guarda de upload — trabalho real do usuário.
+    """
+    if not job_dir.is_dir():
+        return False
+    return (job_dir / "source.mp4").exists() or any(
+        (job_dir / nome).exists() for nome in DERIVADOS_DO_SOURCE
+    )
+
+
 def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
     """Resumo de um projeto, ou None se o diretório não for um job.
 
@@ -64,6 +78,7 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
             probe = None
 
     slug = job_dir.name
+    renders = [output_root / f"{slug}-16x9.mp4", output_root / f"{slug}-9x16.mp4"]
     return JobSummary(
         slug=slug,
         title=cfg.get("title", ""),
@@ -78,6 +93,7 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=source.stat().st_size if source.exists() else 0,
         bytes_total=sum(p.stat().st_size for p in arquivos),
+        bytes_render=sum(p.stat().st_size for p in renders if p.exists()),
     )
 
 
@@ -90,12 +106,9 @@ def job_summary_minimo(job_dir: Path) -> JobSummary | None:
     só o que dá para inferir da presença dos arquivos — a tela só precisa
     saber o nome e que há trabalho.
     """
-    if not job_dir.is_dir():
+    if not tem_trabalho(job_dir):
         return None
     source = job_dir / "source.mp4"
-    tem_algo = source.exists() or any((job_dir / nome).exists() for nome in DERIVADOS_DO_SOURCE)
-    if not tem_algo:
-        return None
     return JobSummary(
         slug=job_dir.name,
         has_source=source.exists(),
@@ -120,7 +133,9 @@ def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
     resumos = []
     for d in root.iterdir():
         try:
-            s = job_summary(d, Path(output_root))
+            # config ilegível cai no resumo mínimo: um projeto invisível na
+            # lista não pode ser apagado, e ele ainda bloqueia o upload com 409
+            s = job_summary(d, Path(output_root)) or job_summary_minimo(d)
         except Exception:
             continue
         if s:

@@ -174,6 +174,9 @@ class JobSummary(BaseModel):
     has_render_9x16: bool = False
     bytes_source: int = 0
     bytes_total: int = 0
+    # renders exportados em output/. Ficam separados de bytes_total porque
+    # sobrevivem a apagar o projeto — a tela precisa dizer isso ao confirmar.
+    bytes_render: int = 0
 
 
 ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]

@@ -15,8 +15,8 @@ from api.claude_cli import (
 )
 from api.jobs import (
     allowed_file_path, cut_result, get_state, job_summary, job_summary_minimo,
-    list_jobs, suggest_hook, update_brand_kit, update_caption_style, update_config,
-    update_hook_card_frames, update_orientation, update_whisper_model,
+    list_jobs, suggest_hook, tem_trabalho, update_brand_kit, update_caption_style,
+    update_config, update_hook_card_frames, update_orientation, update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
@@ -49,18 +49,6 @@ def read_jobs() -> list[JobSummary]:
     return list_jobs(jobs_root, output_root)
 
 
-def _tem_trabalho(resumo: JobSummary) -> bool:
-    """Se há algo a perder ao trocar o vídeo deste projeto.
-
-    O source conta: reenviar por cima dele é exatamente o caso que queremos
-    tornar explícito. Um slug que existe só com job.config.json não conta.
-    """
-    return any((
-        resumo.has_source, resumo.has_trimmed, resumo.has_transcript,
-        resumo.has_hook, resumo.has_recipe,
-    ))
-
-
 @router.post("/jobs")
 async def create_job(
     files: list[UploadFile] = File(...),
@@ -78,12 +66,8 @@ async def create_job(
     # silenciosa seja impossível por qualquer caminho.
     if not overwrite:
         job_dir = Path(jobs_root) / slug
-        # job_summary devolve None tanto para "slug não existe" quanto para
-        # "job.config.json corrompido" — os dois não podem ser tratados
-        # igual aqui, senão um config ilegível desliga a guarda e o ingest
-        # apaga source, transcrição e textos de verdade.
-        existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
-        if existente and _tem_trabalho(existente):
+        if tem_trabalho(job_dir):
+            existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
             raise HTTPException(status_code=409, detail=existente.model_dump())
 
     paths: list[str] = []

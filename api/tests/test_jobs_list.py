@@ -103,3 +103,46 @@ def test_mais_recente_primeiro(client, tmp_root):
 
     slugs = [j["slug"] for j in client.get("/api/jobs").json()]
     assert slugs == ["novo", "antigo"]
+
+
+def test_reporta_o_tamanho_dos_renders_separado(client, tmp_root):
+    """A tela precisa dizer o que "liberar espaço" libera e o que sobrevive."""
+    _criar_job(tmp_root, "A1", {"source.mp4": b"x" * 100})
+    (tmp_root / "output" / "A1-9x16.mp4").write_bytes(b"z" * 40)
+
+    item = client.get("/api/jobs").json()[0]
+    assert item["bytes_source"] == 100
+    assert item["bytes_render"] == 40
+    # bytes_total continua sendo só o diretório do job
+    assert item["bytes_render"] not in (item["bytes_total"],)
+
+
+def test_soma_os_dois_renders_quando_existem(client, tmp_root):
+    _criar_job(tmp_root, "A1", {})
+    (tmp_root / "output" / "A1-9x16.mp4").write_bytes(b"z" * 40)
+    (tmp_root / "output" / "A1-16x9.mp4").write_bytes(b"w" * 60)
+    assert client.get("/api/jobs").json()[0]["bytes_render"] == 100
+
+
+def test_sem_render_o_tamanho_e_zero(client, tmp_root):
+    _criar_job(tmp_root, "A1", {})
+    assert client.get("/api/jobs").json()[0]["bytes_render"] == 0
+
+
+def test_projeto_com_config_ilegivel_aparece_na_lista(client, tmp_root):
+    """Sem aparecer, não há como apagá-lo — e ele bloqueia o upload com 409."""
+    d = tmp_root / "jobs" / "quebrado"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{ isto não é json", encoding="utf-8")
+    (d / "transcript.json").write_text("[]", encoding="utf-8")
+
+    slugs = [j["slug"] for j in client.get("/api/jobs").json()]
+    assert "quebrado" in slugs
+
+
+def test_diretorio_vazio_continua_fora_da_lista(client, tmp_root):
+    """Config ilegível e sem nenhum artefato não é projeto — não polui a lista."""
+    d = tmp_root / "jobs" / "casca"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{", encoding="utf-8")
+    assert client.get("/api/jobs").json() == []
