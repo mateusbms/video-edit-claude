@@ -233,6 +233,15 @@ def update_caption_style(slug: str, jobs_root: Path, style) -> None:
     write_json(job.dir / "job.config.json", asdict(job.config))
 
 
+def update_title(slug: str, jobs_root: Path, title: str) -> None:
+    """Grava o título legível. Espaços em volta somem, e um título só de
+    espaços vira vazio — senão a lista mostraria um nome em branco em vez de
+    cair no slug."""
+    job = init_job(jobs_root, slug)
+    job.config.title = title.strip()
+    write_json(job.dir / "job.config.json", asdict(job.config))
+
+
 def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
     job = init_job(jobs_root, slug)
     job.config.brand_kit_slug = kit_slug

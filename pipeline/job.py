@@ -21,6 +21,7 @@ class JobConfig:
     caption_highlight: str = ""
     caption_font: str = ""
     orientation: str = ""  # "" = auto (deriva do probe); "16x9" | "9x16" = escolha do usuário
+    title: str = ""  # nome legível na lista de projetos; "" = usa o slug
 
 
 @dataclass

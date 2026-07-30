@@ -16,13 +16,14 @@ from api.claude_cli import (
 from api.jobs import (
     allowed_file_path, cut_result, get_state, job_summary, job_summary_minimo,
     list_jobs, suggest_hook, tem_trabalho, update_brand_kit, update_caption_style,
-    update_config, update_hook_card_frames, update_orientation, update_whisper_model,
+    update_config, update_hook_card_frames, update_orientation, update_title,
+    update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
     CaptionStyleParams, CutParams, CutResult,
     Hook, JobSummary, OrientationParams, OverlayParams, RefineParams,
-    SuggestDefaults, Suggestion, TranscribeParams,
+    SuggestDefaults, Suggestion, TitleParams, TranscribeParams,
 )
 from api.progress import run_with_progress
 from api.sse import sse_event
@@ -100,6 +101,13 @@ def put_orientation(slug: str, params: OrientationParams):
     jobs_root, *_ = _roots()
     update_orientation(slug, jobs_root, params.orientation)
     return {"ok": True, "orientation": get_state(slug, jobs_root).orientation}
+
+
+@router.put("/jobs/{slug}/title")
+def put_title(slug: str, params: TitleParams):
+    jobs_root, *_ = _roots()
+    update_title(slug, jobs_root, params.title)
+    return {"ok": True}
 
 
 @router.post("/jobs/{slug}/cut")

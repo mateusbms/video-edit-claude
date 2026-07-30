@@ -90,6 +90,10 @@ class OrientationParams(BaseModel):
     orientation: Literal["16x9", "9x16", ""] = ""
 
 
+class TitleParams(BaseModel):
+    title: str = ""
+
+
 OverlayAnim = Literal["fade", "slide-up", "slide-down", "pop", "none"]
 # aceita hex (#rgb..#rrggbbaa) OU string vazia (=> usa cor da marca)
 HexOrEmpty = Annotated[str, StringConstraints(pattern=r"^(#[0-9a-fA-F]{3,8})?$")]
