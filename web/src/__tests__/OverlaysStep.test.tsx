@@ -72,6 +72,27 @@ describe("OverlaysStep", () => {
     });
   });
 
+  it("o + Texto nasce com o molde do painel de padrões", async () => {
+    // o painel diz "molde dos novos textos": se o + Texto usasse valores
+    // próprios, mudar a fonte padrão só valeria para as sugestões aplicadas
+    const calls = mockFetch();
+    render(<OverlaysStep {...props} />);
+    // espera o GET /suggest-defaults chegar, senão o molde ainda é o inicial
+    await waitFor(() =>
+      expect((screen.getByLabelText(/fonte padrão/i) as HTMLSelectElement).value).toBe("Poppins"));
+    fireEvent.click(await screen.findByRole("button", { name: /texto/i }));
+    fireEvent.click(screen.getByRole("button", { name: /salvar/i }));
+    await waitFor(() => {
+      const put = calls.find((c) => c.init?.method === "PUT" && c.url.endsWith("/overlays"));
+      expect(put).toBeTruthy();
+      const [ov] = JSON.parse(put.init.body);
+      expect(ov.fontFamily).toBe("Poppins");   // veio do suggest-defaults
+      expect(ov.fontSize).toBe(72);
+      expect(ov.y).toBe(0.12);
+      expect(ov.durationInFrames).toBe(75);
+    });
+  });
+
   it("remover tira o item da lista", async () => {
     render(<OverlaysStep {...props} />);
     fireEvent.click(await screen.findByRole("button", { name: /texto/i }));

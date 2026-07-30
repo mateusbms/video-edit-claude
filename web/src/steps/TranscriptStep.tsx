@@ -8,7 +8,7 @@ import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import { maxCaptionBottom } from "../overlayGeom";
 import type { CaptionLine } from "../types";
 import type { StepProps } from "../App";
-import { FONTS } from "../fonts";
+import { FONTS, DEFAULT_FONT } from "../fonts";
 
 export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [model, setModel] = useState("base");
@@ -156,11 +156,11 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
               onChange={(e) => saveStyle({ ...capStyle, color: e.target.value })} />
           </label>
           <label className="flex flex-col gap-1">Destaque
-            <input aria-label="cor de destaque" type="color" value={capStyle.highlightColor || "#22c55e"}
+            <input aria-label="cor de destaque" type="color" value={capStyle.highlightColor || "#ffffff"}
               onChange={(e) => saveStyle({ ...capStyle, highlightColor: e.target.value })} />
           </label>
           <label className="flex flex-col gap-1">Fonte
-            <select aria-label="fonte da legenda" value={capStyle.fontFamily || "Inter"}
+            <select aria-label="fonte da legenda" value={capStyle.fontFamily || DEFAULT_FONT}
               onChange={(e) => saveStyle({ ...capStyle, fontFamily: e.target.value })}
               className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1">
               {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}

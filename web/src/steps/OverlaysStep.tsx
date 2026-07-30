@@ -16,17 +16,20 @@ import { suggestionToOverlay } from "../suggestions";
 import type { Suggestion, SuggestDefaults } from "../suggestions";
 import type { Overlay, OverlayAnim, Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
-import { FONTS } from "../fonts";
+import { FONTS, DEFAULT_FONT } from "../fonts";
 
 const ANIMS: OverlayAnim[] = ["fade", "slide-up", "slide-down", "pop", "none"];
 
+// O `+ Texto` nasce do mesmo molde que uma sugestão aplicada
+// (suggestionToOverlay): senão o painel de padrões valeria só para as
+// sugestões e o texto manual sairia com outra fonte, tamanho e posição.
 function newOverlay(fromFrame: number, id: string, defs: SuggestDefaults): Overlay {
   return {
     id,
     type: "text", text: "Novo texto",
     fromFrame, durationInFrames: defs.durationInFrames,
-    x: 0.5, y: 0.25, anchor: "center", fontSize: 64,
-    color: "", highlightColor: "", fontFamily: "",
+    x: defs.x, y: defs.y, anchor: defs.anchor, fontSize: defs.fontSize,
+    color: defs.color, highlightColor: "", fontFamily: defs.fontFamily,
     maxWidthPct: defs.maxWidthPct,
     enter: defs.enter, exit: defs.exit,
     enterDurationInFrames: 12, exitDurationInFrames: 12,
@@ -53,9 +56,10 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const idCounter = useRef(0);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [generating, setGenerating] = useState(false);
+  // espelha api/models.py:SuggestDefaults (120 frames = 4s a 30fps)
   const [defs, setDefs] = useState<SuggestDefaults>({
-    x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: "", color: "",
-    enter: "slide-up", exit: "fade", durationInFrames: 75, maxWidthPct: 80,
+    x: 0.5, y: 0.12, anchor: "center", fontSize: 64, fontFamily: DEFAULT_FONT, color: "",
+    enter: "slide-up", exit: "fade", durationInFrames: 120, maxWidthPct: 80,
   });
   const defsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -224,48 +228,57 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
         warnIds={overlappingIds}
       />
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm grid grid-cols-4 gap-3">
-        <label className="flex flex-col gap-1">Posição
-          <select aria-label="posição padrão" value={defs.y <= 0.2 ? "topo" : defs.y >= 0.7 ? "baixo" : "centro"}
-            onChange={(e) => patchDefs({ y: e.target.value === "topo" ? 0.12 : e.target.value === "baixo" ? 0.8 : 0.5 })}
-            className="bg-zinc-800 rounded px-2 py-1">
-            <option value="topo">Topo</option>
-            <option value="centro">Centro</option>
-            <option value="baixo">Baixo</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">Fonte
-          <select aria-label="fonte padrão" value={defs.fontFamily || "Inter"}
-            onChange={(e) => patchDefs({ fontFamily: e.target.value })} className="bg-zinc-800 rounded px-2 py-1">
-            {FONTS.map((ff) => <option key={ff} value={ff}>{ff}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">Cor
-          <input aria-label="cor padrão" type="color" value={defs.color || "#ffffff"}
-            onChange={(e) => patchDefs({ color: e.target.value })} />
-        </label>
-        <label className="flex flex-col gap-1">Tamanho
-          <input aria-label="tamanho padrão" type="range" min={24} max={160} value={defs.fontSize}
-            onChange={(e) => patchDefs({ fontSize: Number(e.target.value) })} />
-        </label>
-        <label className="flex flex-col gap-1">Entrada
-          <select aria-label="entrada padrão" value={defs.enter}
-            onChange={(e) => patchDefs({ enter: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
-            {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">Saída
-          <select aria-label="saída padrão" value={defs.exit}
-            onChange={(e) => patchDefs({ exit: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
-            {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">Permanência (s)
-          <input aria-label="permanência padrão" type="number" step={0.5} min={0.5}
-            value={(defs.durationInFrames / fps).toFixed(1)}
-            onChange={(e) => patchDefs({ durationInFrames: Math.max(1, Math.round(Number(e.target.value) * fps)) })}
-            className="bg-zinc-800 rounded px-2 py-1" />
-        </label>
+      <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm space-y-2">
+        <div>
+          <span className="font-medium">Padrão dos novos textos</span>
+          <p className="text-xs text-zinc-500">
+            Molde do <strong>+ Texto</strong> e de cada sugestão aplicada. Depois de criado, cada texto é editado
+            individualmente na lista abaixo — mexer aqui não altera os que já existem.
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <label className="flex flex-col gap-1">Posição
+            <select aria-label="posição padrão" value={defs.y <= 0.2 ? "topo" : defs.y >= 0.7 ? "baixo" : "centro"}
+              onChange={(e) => patchDefs({ y: e.target.value === "topo" ? 0.12 : e.target.value === "baixo" ? 0.8 : 0.5 })}
+              className="bg-zinc-800 rounded px-2 py-1">
+              <option value="topo">Topo</option>
+              <option value="centro">Centro</option>
+              <option value="baixo">Baixo</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Fonte
+            <select aria-label="fonte padrão" value={defs.fontFamily || DEFAULT_FONT}
+              onChange={(e) => patchDefs({ fontFamily: e.target.value })} className="bg-zinc-800 rounded px-2 py-1">
+              {FONTS.map((ff) => <option key={ff} value={ff}>{ff}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Cor
+            <input aria-label="cor padrão" type="color" value={defs.color || "#ffffff"}
+              onChange={(e) => patchDefs({ color: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1">Tamanho
+            <input aria-label="tamanho padrão" type="range" min={24} max={160} value={defs.fontSize}
+              onChange={(e) => patchDefs({ fontSize: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">Entrada
+            <select aria-label="entrada padrão" value={defs.enter}
+              onChange={(e) => patchDefs({ enter: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
+              {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Saída
+            <select aria-label="saída padrão" value={defs.exit}
+              onChange={(e) => patchDefs({ exit: e.target.value as OverlayAnim })} className="bg-zinc-800 rounded px-2 py-1">
+              {ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">Permanência (s)
+            <input aria-label="permanência padrão" type="number" step={0.5} min={0.5}
+              value={(defs.durationInFrames / fps).toFixed(1)}
+              onChange={(e) => patchDefs({ durationInFrames: Math.max(1, Math.round(Number(e.target.value) * fps)) })}
+              className="bg-zinc-800 rounded px-2 py-1" />
+          </label>
+        </div>
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded p-3 space-y-2">
@@ -367,7 +380,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
               onChange={(e) => patch(selected.id, { color: e.target.value })} />
           </label>
           <label className="flex flex-col gap-1">Fonte
-            <select aria-label="fonte" value={selected.fontFamily || "Inter"}
+            <select aria-label="fonte" value={selected.fontFamily || DEFAULT_FONT}
               onChange={(e) => patch(selected.id, { fontFamily: e.target.value })}
               className="bg-zinc-800 rounded px-2 py-1">
               {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}

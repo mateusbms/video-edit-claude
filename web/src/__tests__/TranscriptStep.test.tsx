@@ -61,10 +61,10 @@ describe("TranscriptStep progress", () => {
     const p = (await screen.findByText("oi")).closest("p") as HTMLElement;
     await waitFor(() => expect(p.style.fontFamily).toMatch(/Poppins/));
 
-    // e o controle continua mostrando o valor CRU (vazio => "Inter" na lista),
-    // para um ajuste de tamanho não congelar a fonte da marca no job
+    // e o controle continua mostrando o valor CRU (vazio => o padrão do editor
+    // na lista), para um ajuste de tamanho não congelar a fonte da marca no job
     const select = await screen.findByLabelText(/fonte da legenda/i);
-    expect((select as HTMLSelectElement).value).toBe("Inter");
+    expect((select as HTMLSelectElement).value).toBe("Plus Jakarta Sans");
   });
 
   it("a posição alcança o topo do frame, e o teto segue a orientação", async () => {

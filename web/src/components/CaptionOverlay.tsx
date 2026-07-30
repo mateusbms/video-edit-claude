@@ -29,7 +29,7 @@ export const CaptionOverlay: React.FC<{
   if (li < 0) return null;
   const line = lines[li];
   const color = style?.color || "#ffffff";
-  const highlight = style?.highlightColor || "#22c55e";
+  const highlight = style?.highlightColor || "#ffffff";
   const draggable = !!(onDragBottom && style);
 
   const onPointerDown = (e: React.PointerEvent) => {

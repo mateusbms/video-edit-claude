@@ -2,6 +2,13 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
+# Fonte única dos padrões do editor: o mesmo valor que o render usa quando o
+# job não escolheu nada (pipeline/recipe.py).
+from pipeline.recipe import DEFAULT_HOOK_COLOR, DEFAULT_HOOK_FONT, DEFAULT_HOOK_FRAMES
+
+DEFAULT_TEXT_FONT = "Plus Jakarta Sans"
+DEFAULT_TEXT_FRAMES = 120
+
 
 Hex = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{3,8}$")]
 
@@ -40,12 +47,12 @@ class CaptionLine(BaseModel):
 class Hook(BaseModel):
     title: str
     subtitle: str = ""
-    duration_frames: int = 90
+    duration_frames: int = DEFAULT_HOOK_FRAMES
     x: float = 0.5
     y: float = 0.16
     fontSize: int = 84
-    fontFamily: str = ""
-    color: str = ""
+    fontFamily: str = DEFAULT_HOOK_FONT
+    color: str = DEFAULT_HOOK_COLOR
     anchor: Literal["center", "left", "right"] = "center"
     maxWidthPct: int = 80
 
@@ -119,15 +126,20 @@ class Suggestion(BaseModel):
 
 
 class SuggestDefaults(BaseModel):
+    """Molde dos textos do passo 5: vale para o `+ Texto` e para toda sugestão
+    aplicada. Depois de criado, cada overlay é editado individualmente."""
+
     x: float = 0.5
     y: float = 0.12
     anchor: Literal["center", "left", "right"] = "center"
     fontSize: int = 64
-    fontFamily: str = ""
+    fontFamily: str = DEFAULT_TEXT_FONT
     color: HexOrEmpty = ""
     enter: OverlayAnim = "slide-up"
     exit: OverlayAnim = "fade"
-    durationInFrames: int = 75
+    # 4s a 30fps — a permanência é gravada em frames, então em outro fps o
+    # painel mostra o equivalente em segundos desse fps.
+    durationInFrames: int = DEFAULT_TEXT_FRAMES
     maxWidthPct: int = 80
 
 

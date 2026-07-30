@@ -30,14 +30,22 @@ def test_caption_line_roundtrip():
 
 def test_hook_defaults():
     h = Hook(title="x", subtitle="y")
-    assert h.duration_frames == 90
+    assert h.duration_frames == 180  # 6s a 30fps
 
 
 def test_hook_style_defaults():
     from api.models import Hook
     h = Hook(title="T")
     assert h.x == 0.5 and h.y == 0.16 and h.fontSize == 84
-    assert h.fontFamily == "" and h.color == "" and h.anchor == "center"
+    assert h.fontFamily == "Plus Jakarta Sans" and h.color == "#ffffff" and h.anchor == "center"
+
+
+def test_suggest_defaults_do_editor():
+    from api.models import SuggestDefaults
+
+    d = SuggestDefaults()
+    assert d.fontFamily == "Plus Jakarta Sans"
+    assert d.durationInFrames == 120  # 4s a 30fps
 
 
 def test_brand_kit_minimal_valid():

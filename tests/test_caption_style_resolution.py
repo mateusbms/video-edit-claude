@@ -71,11 +71,14 @@ class TestCaptionStyleResolvido:
 
     def test_sem_brand_kit_cai_no_padrao(self, tmp_path, kits_root):
         init_job(tmp_path, "j4")
-        assert get_state("j4", tmp_path).captionStyleResolved["fontFamily"] == "Inter"
+        resolvido = get_state("j4", tmp_path).captionStyleResolved
+        assert resolvido["fontFamily"] == "Plus Jakarta Sans"
+        # destaque branco: o padrão é a palavra ativa só crescer, sem trocar de cor
+        assert resolvido["highlightColor"] == "#ffffff"
 
     def test_kit_inexistente_nao_quebra(self, tmp_path, kits_root):
         _job_com_kit(tmp_path, "j5", "sumiu", caption_font="")
-        assert get_state("j5", tmp_path).captionStyleResolved["fontFamily"] == "Inter"
+        assert get_state("j5", tmp_path).captionStyleResolved["fontFamily"] == "Plus Jakarta Sans"
 
     def test_preview_e_render_resolvem_igual(self, tmp_path, kits_root):
         """A prova que importa: o dicionário do preview é idêntico ao que vai
@@ -109,7 +112,7 @@ class TestResolveCaptionStylePuro:
                  "fonts": {"body": "Poppins"}}
         assert resolve_caption_style({"fontFamily": "Anton"}, brand)["fontFamily"] == "Anton"
         assert resolve_caption_style({"fontFamily": ""}, brand)["fontFamily"] == "Poppins"
-        assert resolve_caption_style({}, None)["fontFamily"] == "Inter"
+        assert resolve_caption_style({}, None)["fontFamily"] == "Plus Jakarta Sans"
 
     def test_defaults_numericos(self):
         r = resolve_caption_style(None, None)

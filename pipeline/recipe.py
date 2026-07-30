@@ -45,6 +45,21 @@ def brand_of_kit(kit_slug: str) -> dict | None:
     return {"colors": kit.colors.model_dump(), "fonts": kit.fonts.model_dump()}
 
 
+# Padrões do editor: valem quando o job não escolheu nada E não há brand kit.
+# O front espelha estes valores nos controles (web/src/steps/TranscriptStep.tsx),
+# senão o seletor mostraria uma fonte e o render usaria outra.
+DEFAULT_CAPTION_FONT = "Plus Jakarta Sans"
+DEFAULT_CAPTION_COLOR = "#ffffff"
+DEFAULT_CAPTION_HIGHLIGHT = "#ffffff"
+
+# Hook: o overlay do Remotion cai em theme.fonts.heading quando a fonte vem
+# vazia, e essa fonte não está entre as suportadas (vira Inter). Por isso o
+# padrão do editor entra aqui explicitamente.
+DEFAULT_HOOK_FRAMES = 180
+DEFAULT_HOOK_FONT = "Plus Jakarta Sans"
+DEFAULT_HOOK_COLOR = "#ffffff"
+
+
 def resolve_caption_style(style: dict | None, brand: dict | None) -> dict:
     """Estilo de legenda efetivo: escolha do usuário > brand kit > padrão.
 
@@ -58,9 +73,9 @@ def resolve_caption_style(style: dict | None, brand: dict | None) -> dict:
     return {
         "fontSize": cs["fontSize"] if cs.get("fontSize") is not None else 48,
         "bottom": cs["bottom"] if cs.get("bottom") is not None else 120,
-        "color": cs.get("color") or bcolors.get("foreground") or "#ffffff",
-        "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or "#22c55e",
-        "fontFamily": cs.get("fontFamily") or bfonts.get("body") or "Inter",
+        "color": cs.get("color") or bcolors.get("foreground") or DEFAULT_CAPTION_COLOR,
+        "highlightColor": cs.get("highlightColor") or bcolors.get("accent") or DEFAULT_CAPTION_HIGHLIGHT,
+        "fontFamily": cs.get("fontFamily") or bfonts.get("body") or DEFAULT_CAPTION_FONT,
     }
 
 
@@ -120,12 +135,12 @@ def build_recipe(
     resolved_caption_style = resolve_caption_style(caption_style, brand)
 
     # piso defensivo: 0/negativo/ausente não podem sumir com o overlay de hook
-    duration_frames = max(1, hook.get("duration_frames") or 90)
+    duration_frames = max(1, hook.get("duration_frames") or DEFAULT_HOOK_FRAMES)
     hx = hook.get("x", 0.5)
     hy = hook.get("y", 0.16)
     hfs = hook.get("fontSize", 84)
-    hff = hook.get("fontFamily", "")
-    hcolor = hook.get("color", "")
+    hff = hook.get("fontFamily") or DEFAULT_HOOK_FONT
+    hcolor = hook.get("color") or DEFAULT_HOOK_COLOR
     hanchor = hook.get("anchor", "center")
     hmaxw = hook.get("maxWidthPct", 80)
     hook_overlays = [

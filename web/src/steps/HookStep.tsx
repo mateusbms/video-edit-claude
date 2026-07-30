@@ -8,11 +8,14 @@ import { effectiveCaptionStyle } from "../captionStyle";
 import { frameSize, previewScaleFor, type Orientation } from "../frame";
 import type { Hook, CaptionLine } from "../types";
 import type { StepProps } from "../App";
-import { FONTS } from "../fonts";
+import { FONTS, DEFAULT_FONT } from "../fonts";
 
+// Espelha api/models.py:Hook — o GET /hook de um job novo já vem com estes
+// valores; o DEF só cobre o intervalo antes da resposta chegar.
 const DEF: Hook = {
-  title: "", subtitle: "", duration_frames: 90,
-  x: 0.5, y: 0.16, fontSize: 84, fontFamily: "", color: "", anchor: "center", maxWidthPct: 80,
+  title: "", subtitle: "", duration_frames: 180,
+  x: 0.5, y: 0.16, fontSize: 84, fontFamily: DEFAULT_FONT, color: "#ffffff",
+  anchor: "center", maxWidthPct: 80,
 };
 
 export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
@@ -131,7 +134,7 @@ export const HookStep: React.FC<StepProps> = ({ slug, next, back }) => {
             onChange={(e) => set({ color: e.target.value })} />
         </label>
         <label className="flex flex-col gap-1">Fonte
-          <select aria-label="fonte do hook" value={hook.fontFamily || "Inter"}
+          <select aria-label="fonte do hook" value={hook.fontFamily || DEFAULT_FONT}
             onChange={(e) => set({ fontFamily: e.target.value })} className="bg-zinc-800 rounded px-2 py-1">
             {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>

@@ -6,6 +6,9 @@ apontamos para a skill em disco, porque o CLI roda de um cwd neutro (ver
 `api/claude_cli.py`) e não enxerga o `.claude/` do repo.
 """
 
+from api.models import DEFAULT_TEXT_FRAMES
+from pipeline.recipe import DEFAULT_HOOK_FRAMES
+
 
 def _fmt_transcript(transcript: list[dict]) -> str:
     linhas = []
@@ -30,7 +33,12 @@ def build_prompt(
     hook_title = str(hook.get("title", "")).strip()
     hook_subtitle = str(hook.get("subtitle", "")).strip()
     font_size = defaults.get("fontSize", 64)
-    duration_default = defaults.get("durationInFrames", 75)
+    duration_default = defaults.get("durationInFrames", DEFAULT_TEXT_FRAMES)
+    # A faixa segue a permanência padrão do painel: pedir 45–75 fixo faria toda
+    # sugestão aplicada nascer bem mais curta do que o padrão configurado.
+    duration_min = max(1, round(duration_default * 0.6))
+    # Janela do hook, em segundos, para as sugestões não brigarem com ele.
+    hook_sec = max(1.0, (hook.get("duration_frames") or DEFAULT_HOOK_FRAMES) / (fps or 30))
 
     # A orientação muda a densidade que cabe na linha.
     if orientation == "9x16":
@@ -72,9 +80,9 @@ Gere textos de overlay (kinetic text) para um Reels/Short a partir da transcriç
   quando houver) OU `kind:"dense"` (uma linha com símbolos ✓ ✗ → ·).
 - GROUNDING RÍGIDO: cada sugestão carrega `source` = a fala exata que a originou. NUNCA
   invente claim, número ou fato que não esteja na transcrição.
-- Evite a janela do hook (~0–3s) e a faixa da legenda.
+- Evite a janela do hook (~0–{hook_sec:.0f}s) e a faixa da legenda.
 - Alvo: 6 a 10 sugestões.
-- `fromFrame` = round(start_da_fala * fps). `durationInFrames` entre 45 e 75.
+- `fromFrame` = round(start_da_fala * fps). `durationInFrames` entre {duration_min} e {duration_default}.
 - Ids sequenciais: sug_01, sug_02, …
 
 ## Formato da resposta
