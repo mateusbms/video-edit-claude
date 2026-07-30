@@ -5,7 +5,7 @@ from pathlib import Path
 from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FRAME_SIZES, frame_size, resolve_orientation
 from pipeline.recipe import brand_of_kit, resolve_caption_style
-from api.models import CutParams, CutResult, CutSegmentOut, Hook, JobState, ProbeOut
+from api.models import CutParams, CutResult, CutSegmentOut, Hook, JobState, JobSummary, ProbeOut
 
 
 ALLOWED_FILES = {
@@ -36,6 +36,57 @@ def cut_result(job_dir: Path) -> CutResult | None:
         segments=[CutSegmentOut(**c) for c in load_json(cuts_p)],
         trimmed_mtime=trimmed_p.stat().st_mtime if trimmed_p.exists() else 0.0,
     )
+
+
+def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
+    """Resumo de um projeto, ou None se o diretório não for um job.
+
+    Lê o job.config.json direto em vez de chamar init_job: init_job cria o
+    diretório, e consultar um slug inexistente não pode criá-lo.
+    """
+    cfg_path = job_dir / "job.config.json"
+    if not job_dir.is_dir() or not cfg_path.exists():
+        return None
+    try:
+        cfg = load_json(cfg_path)
+    except Exception:
+        return None
+
+    arquivos = [p for p in job_dir.iterdir() if p.is_file()]
+    source = job_dir / "source.mp4"
+    probe = None
+    probe_path = job_dir / "probe.json"
+    if probe_path.exists():
+        try:
+            probe = load_json(probe_path)
+        except Exception:
+            probe = None
+
+    slug = job_dir.name
+    return JobSummary(
+        slug=slug,
+        title=cfg.get("title", ""),
+        updated_at=max((p.stat().st_mtime for p in arquivos), default=0.0),
+        orientation=resolve_orientation(cfg.get("orientation", ""), probe),
+        has_source=source.exists(),
+        has_trimmed=(job_dir / "trimmed.mp4").exists(),
+        has_transcript=(job_dir / "transcript.json").exists(),
+        has_hook=(job_dir / "hook.json").exists(),
+        has_recipe=(job_dir / "edit-recipe.json").exists(),
+        has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
+        has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
+        bytes_source=source.stat().st_size if source.exists() else 0,
+        bytes_total=sum(p.stat().st_size for p in arquivos),
+    )
+
+
+def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
+    """Projetos existentes, do mais recente para o mais antigo."""
+    root = Path(jobs_root)
+    if not root.is_dir():
+        return []
+    resumos = [s for s in (job_summary(d, Path(output_root)) for d in root.iterdir()) if s]
+    return sorted(resumos, key=lambda s: s.updated_at, reverse=True)
 
 
 def get_state(slug: str, jobs_root: Path) -> JobState:

@@ -147,6 +147,23 @@ class JobState(BaseModel):
     orientation: str = "16x9"  # efetiva (já resolvida); nunca vazia
 
 
+class JobSummary(BaseModel):
+    """Um projeto na tela de lista. Só o que a lista precisa mostrar."""
+    slug: str
+    title: str = ""
+    updated_at: float = 0.0
+    orientation: str = "16x9"
+    has_source: bool = False
+    has_trimmed: bool = False
+    has_transcript: bool = False
+    has_hook: bool = False
+    has_recipe: bool = False
+    has_render_16x9: bool = False
+    has_render_9x16: bool = False
+    bytes_source: int = 0
+    bytes_total: int = 0
+
+
 ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]
 
 

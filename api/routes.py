@@ -14,14 +14,14 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, cut_result, get_state, suggest_hook,
+    allowed_file_path, cut_result, get_state, list_jobs, suggest_hook,
     update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
     CaptionStyleParams, CutParams, CutResult,
-    Hook, OrientationParams, OverlayParams, RefineParams,
+    Hook, JobSummary, OrientationParams, OverlayParams, RefineParams,
     SuggestDefaults, Suggestion, TranscribeParams,
 )
 from api.progress import run_with_progress
@@ -40,6 +40,13 @@ def _roots() -> tuple[Path, Path, Path]:
         Path(os.environ.get("INPUT_ROOT", "input")),
         Path(os.environ.get("OUTPUT_ROOT", "output")),
     )
+
+
+@router.get("/jobs")
+def read_jobs() -> list[JobSummary]:
+    """Projetos salvos, para a tela de lista."""
+    jobs_root, _, output_root = _roots()
+    return list_jobs(jobs_root, output_root)
 
 
 @router.post("/jobs")
