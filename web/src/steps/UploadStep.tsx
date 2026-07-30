@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { uploadJob, putOrientation, getJob } from "../api";
 import { formatSeconds } from "../util";
 import type { StepProps } from "../App";
@@ -19,6 +19,22 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [changed, setChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Projeto aberto pela lista já tem vídeo no servidor: carrega o probe e a
+  // orientação dele para o "Próximo" liberar sem exigir reenvio. (O efeito
+  // irmão, para o caso sem slug — sugerir nome livre — é da Task 6.)
+  useEffect(() => {
+    if (!slug) return;
+    let vivo = true;
+    getJob(slug)
+      .then((j) => {
+        if (!vivo) return;
+        if (j.probe) setProbe(j.probe);
+        if (j.orientation) setOrientation(j.orientation);
+      })
+      .catch(() => { /* backend indisponível: fica sem probe, como antes */ });
+    return () => { vivo = false; };
+  }, [slug]);
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;

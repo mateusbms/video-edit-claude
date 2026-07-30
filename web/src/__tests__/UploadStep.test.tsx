@@ -50,6 +50,27 @@ describe("UploadStep", () => {
   });
 });
 
+describe("abrir projeto existente (com slug)", () => {
+  beforeEach(() => {
+    uploadJob.mockReset();
+    putOrientation.mockReset();
+    getJob.mockReset();
+  });
+
+  it("carrega o probe do job e libera o Próximo sem precisar reenviar vídeo", async () => {
+    getJob.mockImplementation(async () => ({
+      probe: { width: 1080, height: 1920, fps: 30, duration: 12 },
+      orientation: "9x16",
+    }));
+    render(<UploadStep {...props} slug="A1" />);
+    expect(getJob).toHaveBeenCalledWith("A1");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /próximo/i })).not.toBeDisabled();
+    });
+    expect(uploadJob).not.toHaveBeenCalled();
+  });
+});
+
 describe("escolha de formato", () => {
   beforeEach(() => {
     uploadJob.mockReset();
