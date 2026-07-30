@@ -8,6 +8,16 @@ from pipeline.recipe import brand_of_kit, build_recipe
 from pipeline.concat import concat_videos
 
 
+# Tudo que descreve o conteúdo do source: um vídeo novo invalida todos.
+# job.config.json e suggest-defaults.json ficam de fora de propósito — são
+# preferências (sliders, estilo de legenda, marca), não conteúdo do vídeo.
+DERIVADOS_DO_SOURCE = (
+    "cuts.json", "trimmed.mp4", "trimmed.probe.json",
+    "transcript.json", "hook.json", "overlays.json", "suggestions.json",
+    "edit-recipe.json", "render.log",
+)
+
+
 def stage_ingest(job: Job, src_paths: list[str]) -> None:
     dest = job.dir / "source.mp4"
     concat_videos([str(p) for p in src_paths], str(dest))
@@ -15,6 +25,13 @@ def stage_ingest(job: Job, src_paths: list[str]) -> None:
     write_json(job.dir / "probe.json",
                {"width": meta.width, "height": meta.height, "fps": meta.fps,
                 "duration": meta.duration, "nb_frames": meta.nb_frames})
+    # Reenviar para um slug que já existe troca o vídeo, mas deixava o corte, a
+    # transcrição e os textos do vídeo anterior em disco. O passo de Cortes relê
+    # o servidor ao abrir e restaurava esse corte órfão — o usuário subia um
+    # vídeo novo e via o antigo. Mesmo tratamento que stage_refine dá quando o
+    # trimmed muda, estendido aos artefatos do corte.
+    for stale in DERIVADOS_DO_SOURCE:
+        (job.dir / stale).unlink(missing_ok=True)
 
 
 def stage_cut(job: Job, progress_cb=None) -> None:

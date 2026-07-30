@@ -22,6 +22,62 @@ def _clip(path: Path, w: int, h: int, dur: float) -> None:
     )
 
 
+def _ingest_falso(monkeypatch, job):
+    """stage_ingest sem ffmpeg: só escreve o source e devolve um probe fixo."""
+    from pipeline import stages
+
+    def fake_concat(_srcs, dest):
+        Path(dest).write_bytes(b"novo source")
+
+    class _Meta:
+        width, height, fps, duration, nb_frames = 1080, 1920, 30.0, 10.0, 300
+
+    monkeypatch.setattr(stages, "concat_videos", fake_concat)
+    monkeypatch.setattr(stages, "probe_video", lambda _p: _Meta())
+    stage_ingest(job, ["qualquer.mp4"])
+
+
+def test_reenviar_para_o_mesmo_slug_apaga_o_trabalho_do_video_anterior(tmp_path, monkeypatch):
+    """Subir outro vídeo no mesmo slug deixava corte e transcrição órfãos.
+
+    O passo de Cortes relê o servidor ao abrir, então esse corte órfão voltava
+    na tela: o usuário subia um vídeo novo e via o antigo.
+    """
+    job = init_job(tmp_path / "jobs", "v1")
+    for nome in ("cuts.json", "transcript.json", "hook.json", "overlays.json",
+                 "suggestions.json", "edit-recipe.json"):
+        write_json(job.dir / nome, {"do": "vídeo antigo"})
+    (job.dir / "trimmed.mp4").write_bytes(b"video antigo")
+    (job.dir / "trimmed.probe.json").write_text("{}", encoding="utf-8")
+    (job.dir / "render.log").write_text("log antigo", encoding="utf-8")
+
+    _ingest_falso(monkeypatch, job)
+
+    for nome in ("cuts.json", "trimmed.mp4", "trimmed.probe.json", "transcript.json",
+                 "hook.json", "overlays.json", "suggestions.json", "edit-recipe.json",
+                 "render.log"):
+        assert not (job.dir / nome).exists(), f"{nome} sobreviveu ao vídeo novo"
+
+
+def test_reenviar_preserva_as_preferencias_do_job(tmp_path, monkeypatch):
+    """Sliders, estilo de legenda e marca não descrevem o vídeo — não se perdem."""
+    job = init_job(tmp_path / "jobs", "v2")
+    config_antes = (job.dir / "job.config.json").read_text(encoding="utf-8")
+    write_json(job.dir / "suggest-defaults.json", {"x": 0.5, "y": 0.12})
+
+    _ingest_falso(monkeypatch, job)
+
+    assert (job.dir / "job.config.json").read_text(encoding="utf-8") == config_antes
+    assert load_json(job.dir / "suggest-defaults.json") == {"x": 0.5, "y": 0.12}
+
+
+def test_primeiro_upload_nao_estoura_sem_derivados(tmp_path, monkeypatch):
+    job = init_job(tmp_path / "jobs", "v3")
+    _ingest_falso(monkeypatch, job)
+    assert (job.dir / "source.mp4").exists()
+    assert load_json(job.dir / "probe.json")["height"] == 1920
+
+
 def test_stage_recipe_writes_edit_recipe(tmp_path):
     job = init_job(tmp_path / "jobs", "v1")
     write_json(job.dir / "probe.json", {"width": 1920, "height": 1080, "fps": 30, "duration": 2.0})
