@@ -116,38 +116,38 @@ def test_guarda_conta_sugestoes_como_trabalho(client, tmp_root, sample_mp4):
     assert _upload(client, "sg", sample_mp4).status_code == 409
 
 
-def test_falha_transitoria_de_stat_no_resumo_minimo_nao_desliga_a_guarda(
+def test_permission_error_isolada_em_output_nao_libera_a_sobrescrita(
     client, tmp_root, sample_mp4, monkeypatch
 ):
-    """Achado B da re-revisão: job_summary_minimo (a rede de segurança desta
-    guarda quando job_summary falha) ganhou leituras de tamanho/mtime que
-    podem estourar FileNotFoundError num arquivo transitório do job —
-    stage_refine cria e substitui trimmed.refined.mp4 dentro da pasta, então
-    um refino rodando em paralelo já basta, sem precisar de um DELETE
-    concorrente. Antes da correção isso propagava até o
-    `except Exception: existente = None` do create_job, e o upload seguia
-    sobrescrevendo transcrição e textos em silêncio."""
+    """Achado B (fechado pela raiz): reprodução ponta a ponta do revisor. Uma
+    PermissionError isolada no stat de output/A1-16x9.mp4 — arquivo que
+    tem_trabalho() nem toca — bastava para o `except Exception: existente =
+    None` da guarda concluir "não existe projeto" e liberar a sobrescrita.
+    Mas tem_trabalho() já tinha confirmado, antes deste bloco rodar, que há
+    trabalho em disco (transcript.json, overlays.json): uma exceção ao
+    montar o resumo não pode reverter essa conclusão, só significa "não
+    consigo dizer o que tem lá", e isso tem que recusar, não liberar."""
     from pathlib import Path as _Path
 
-    d = tmp_root / "jobs" / "A1"
-    d.mkdir(parents=True)
-    (d / "job.config.json").write_text("{{{", encoding="utf-8")  # ilegível -> job_summary é None
-    (d / "transcript.json").write_text("[]", encoding="utf-8")
-    (d / "trimmed.refined.mp4").write_bytes(b"y")  # o arquivo transitório
+    _criar_job_com_trabalho(tmp_root, "A1")
+    (tmp_root / "jobs" / "A1" / "overlays.json").write_text("[]", encoding="utf-8")
+    render = tmp_root / "output" / "A1-16x9.mp4"
+    render.write_bytes(b"z")
 
     original_stat = _Path.stat
 
-    def _stat_falha_no_transitorio(self, *args, **kwargs):
-        if self.name == "trimmed.refined.mp4":
-            raise FileNotFoundError("sumiu entre listar e ler (refine concorrente)")
+    def _stat_recusa_no_render(self, *args, **kwargs):
+        if self.name == "A1-16x9.mp4":
+            raise PermissionError(13, "Access is denied")
         return original_stat(self, *args, **kwargs)
 
-    monkeypatch.setattr(_Path, "stat", _stat_falha_no_transitorio)
+    monkeypatch.setattr(_Path, "stat", _stat_recusa_no_render)
 
     r = _upload(client, "A1", sample_mp4)
 
     assert r.status_code == 409
-    assert (d / "transcript.json").exists()
+    assert (tmp_root / "jobs" / "A1" / "transcript.json").exists()
+    assert (tmp_root / "jobs" / "A1" / "overlays.json").exists()
 
 
 def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
@@ -170,13 +170,20 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
     assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() != b"video antigo"
 
 
-def test_projeto_apagado_entre_a_checagem_e_o_resumo_com_erro_tambem_nao_derruba_o_upload(
+def test_as_duas_funcoes_de_resumo_levantando_recusa_em_vez_de_liberar(
     client, tmp_root, sample_mp4, monkeypatch
 ):
-    """Mesma corrida, mas pegando o caso em que job_summary não devolve None e
-    sim levanta: um rmtree em andamento pode derrubar iterdir()/stat() no meio
-    da leitura (FileNotFoundError). list_jobs já se blinda assim; create_job
-    precisa do mesmo cuidado."""
+    """Antes do achado B ser fechado pela raiz, este teste documentava o
+    comportamento oposto (200: "levantar também não derruba o upload") — só
+    porque `except Exception: existente = None` tratava "não consegui saber"
+    e "confirmei que não há mais nada" como a mesma coisa. Não são: quando as
+    duas funções levantam (em vez de devolverem None de forma limpa), não dá
+    para distinguir daqui "rmtree concorrente apagou tudo mesmo" de "um erro
+    qualquer no meio da leitura, com o projeto intacto" — e tem_trabalho() já
+    tinha visto True antes deste bloco. Sem informação para desempatar, a
+    guarda recusa (409); a corrida legítima com um DELETE concorrente que
+    conclui de verdade que não sobrou nada é coberta pelo teste acima, em
+    que as duas funções devolvem None sem levantar."""
     import api.routes as routes_mod
 
     def _levanta(*args, **kwargs):
@@ -188,5 +195,5 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_com_erro_tambem_nao_derruba
 
     r = _upload(client, "A1", sample_mp4)
 
-    assert r.status_code == 200
-    assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() != b"video antigo"
+    assert r.status_code == 409
+    assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() == b"video antigo"

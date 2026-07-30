@@ -263,6 +263,26 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     expect(aviso.textContent).toMatch(/sugestões/i);
   });
 
+  it("também nomeia a receita de render (resíduo do achado E: sumiu ao trocar has_recipe por has_overlays/has_suggestions)", async () => {
+    // edit-recipe.json está em DERIVADOS_DO_SOURCE — "Substituir" o apaga
+    // igual aos outros. Ao corrigir "textos"/"sugestões" para saírem de
+    // has_overlays/has_suggestions, has_recipe saiu da lista por completo em
+    // vez de continuar como um item à parte (é o que ProjectsScreen faz).
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({
+        slug: "A1", has_recipe: true, has_overlays: false, has_suggestions: false,
+      } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /projeto já existe/i });
+    expect(aviso.textContent).toMatch(/receita de render/i);
+  });
+
   it("substituir reenvia com overwrite", async () => {
     const api = await import("../api");
     (api.uploadJob as any).mockRejectedValueOnce(

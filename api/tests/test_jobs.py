@@ -1,7 +1,8 @@
+import errno
 import json
 from pathlib import Path
 
-from api.jobs import get_state, suggest_hook, allowed_file_path
+from api.jobs import get_state, job_summary_minimo, suggest_hook, allowed_file_path
 from api.models import ProbeOut
 
 
@@ -46,3 +47,47 @@ def test_allowed_file_path_blocks_traversal(tmp_path):
     assert allowed_file_path(job, "trimmed.mp4") == (job / "trimmed.mp4").resolve()
     assert allowed_file_path(job, "../etc/passwd") is None
     assert allowed_file_path(job, "source.mp4") is None  # source não é exposto
+
+
+def test_job_summary_minimo_nao_levanta_quando_um_stat_racha_depois_da_listagem(
+    tmp_path, monkeypatch
+):
+    """B-teste: o teste da rodada anterior levantava FileNotFoundError sem
+    errno. O pathlib não engole isso — quem estourava era o p.is_file() da
+    comprehension de `arquivos`, capturado pelo `except OSError` em volta do
+    próprio iterdir(); `arquivos` ficava vazio e nenhum stat chegava a rodar
+    no arquivo transitório. `_tamanho_seguro`/`_mtime_seguro` nunca eram
+    exercitados, e o teste continuava passando mesmo revertido para
+    `p.stat()` cru.
+
+    Corrigido para a corrida real: o primeiro stat daquele nome (o que
+    `is_file()` usa para listar) funciona normalmente — o arquivo entra em
+    `arquivos` —, e só a partir do segundo stat (o que `_tamanho_seguro`/
+    `_mtime_seguro` usam para ler tamanho/mtime) é que
+    FileNotFoundError(errno.ENOENT, ...) estoura — a mesma corrida real de
+    stage_refine substituindo trimmed.refined.mp4 entre listar e ler.
+    """
+    job_dir = tmp_path / "jobs" / "A1"
+    job_dir.mkdir(parents=True)
+    (job_dir / "transcript.json").write_text("[]", encoding="utf-8")
+    (job_dir / "trimmed.refined.mp4").write_bytes(b"y")
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+
+    original_stat = Path.stat
+    chamadas: dict[str, int] = {}
+
+    def _stat_racha_a_partir_da_segunda_chamada(self, *args, **kwargs):
+        if self.name == "trimmed.refined.mp4":
+            chamadas[self.name] = chamadas.get(self.name, 0) + 1
+            if chamadas[self.name] >= 2:
+                raise FileNotFoundError(errno.ENOENT, "sumiu entre listar e ler (refine concorrente)")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _stat_racha_a_partir_da_segunda_chamada)
+
+    resumo = job_summary_minimo(job_dir, output_root)
+
+    assert resumo is not None
+    assert resumo.slug == "A1"
+    assert resumo.has_transcript is True

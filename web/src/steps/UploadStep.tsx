@@ -203,6 +203,10 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
               // "Substituir" os apaga do mesmo jeito.
               colisao.has_overlays && "textos",
               colisao.has_suggestions && "sugestões",
+              // edit-recipe.json está em DERIVADOS_DO_SOURCE — "Substituir"
+              // também o apaga. ProjectsScreen nomeia "a receita de render";
+              // este diálogo precisa nomear o mesmo.
+              colisao.has_recipe && "receita de render",
             ].filter(Boolean).join(", ") || "o vídeo enviado"}
             {" "}está salvo nele.
           </p>

@@ -140,12 +140,17 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
     Fica de fora só o que depende de um config legível: título e orientação
     escolhida (cai no default 16:9 do model).
 
-    Esta função não pode levantar: ela é a própria rede que existia para
-    tapar o buraco de `job_summary` falhar (ver a guarda em `create_job`,
-    que trata qualquer exceção das duas como "projeto sumiu, upload pode
-    seguir sem perguntar"). Por isso cada leitura de tamanho/mtime é
-    protegida individualmente em vez de deixar um arquivo transitório
-    derrubar o resumo inteiro e desligar a guarda de sobrescrita.
+    `_tamanho_seguro`/`_mtime_seguro` blindam as leituras de tamanho/mtime
+    contra um arquivo transitório (stage_refine substituindo
+    trimmed.refined.mp4 no meio da leitura, por exemplo) — mas isto NÃO é uma
+    garantia de que a função nunca levanta: os `.exists()` abaixo só engolem
+    ENOENT/ENOTDIR/EBADF/ELOOP (o que o pathlib ignora por padrão), e uma
+    PermissionError/WinError 32 ou um WinError 5 de delete-pending (o mesmo
+    estado que `ArquivoEmUsoError` documenta) passam direto. Quem depende de
+    "não levanta" é quem chama, não esta função: a guarda de sobrescrita em
+    `create_job` trata qualquer exceção (daqui ou de `job_summary`) como
+    "ainda não sei se há trabalho, então recuso" — nunca como "não há
+    trabalho, pode sobrescrever" (ver o comentário lá).
     """
     if not tem_trabalho(job_dir):
         return None

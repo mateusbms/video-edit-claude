@@ -69,17 +69,21 @@ async def create_job(
     if not overwrite:
         job_dir = Path(jobs_root) / slug
         if tem_trabalho(job_dir):
+            # tem_trabalho() já confirmou que há algo a perder — daqui para
+            # baixo só existem dois desfechos possíveis: recusar com 409, ou
+            # (quando as duas funções concordam, sem levantar, que o trabalho
+            # sumiu numa corrida com um DELETE concorrente) deixar o upload
+            # seguir. Uma exceção ao montar o resumo NÃO é esse segundo caso:
+            # é "não sei", e "não sei" não pode virar "pode sobrescrever" — foi
+            # assim que uma PermissionError isolada em output/<slug>-16x9.mp4
+            # (um arquivo que tem_trabalho nem toca) bastava para apagar
+            # transcript.json/overlays.json em silêncio (achado B). Por isso o
+            # fallback do except é um resumo mínimo com o que já se sabe (o
+            # slug), não None.
             try:
                 existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir, output_root)
             except Exception:
-                # Mesma corrida com um DELETE concorrente, mas pegando o caso em
-                # que job_summary não devolve None e sim levanta — um rmtree em
-                # andamento pode derrubar iterdir()/stat() no meio da leitura.
-                # list_jobs já se blinda do mesmo jeito (ver comentário lá).
-                existente = None
-            # Corrida com um DELETE concorrente: tem_trabalho() viu True, mas os
-            # arquivos sumiram antes de montar o resumo. Sem trabalho para
-            # proteger, o upload segue — não há mais 409 a devolver.
+                existente = JobSummary(slug=slug)
             if existente is not None:
                 raise HTTPException(status_code=409, detail=existente.model_dump())
 
