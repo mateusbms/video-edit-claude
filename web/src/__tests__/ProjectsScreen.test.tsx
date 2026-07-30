@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 
 const { listJobs } = vi.hoisted(() => ({ listJobs: vi.fn() }));
 vi.mock("../api", () => ({ listJobs }));

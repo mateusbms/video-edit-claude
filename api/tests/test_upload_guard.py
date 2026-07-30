@@ -67,3 +67,18 @@ def test_slug_existente_mas_vazio_nao_bloqueia(client, tmp_root, sample_mp4):
     d.mkdir(parents=True)
     (d / "job.config.json").write_text(json.dumps({}), encoding="utf-8")
     assert _upload(client, "vazio", sample_mp4).status_code == 200
+
+
+def test_config_corrompido_nao_desliga_a_guarda(client, tmp_root, sample_mp4):
+    """job_summary devolve None para um job.config.json ilegível — e None não
+    pode ser lido como "o slug não existe": o diretório pode ter transcrição
+    e textos de verdade, que um config corrompido não apaga."""
+    d = tmp_root / "jobs" / "A1"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{", encoding="utf-8")
+    (d / "transcript.json").write_text("[]", encoding="utf-8")
+
+    r = _upload(client, "A1", sample_mp4)
+
+    assert r.status_code == 409
+    assert (d / "transcript.json").exists()

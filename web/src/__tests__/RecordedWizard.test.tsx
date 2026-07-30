@@ -1,17 +1,23 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 
 const { listJobs } = vi.hoisted(() => ({ listJobs: vi.fn(async () => []) }));
-vi.mock("../api", () => ({
-  listJobs,
-  getJob: vi.fn(async () => ({ config: {} })),
-  getCuts: vi.fn(async () => null),
-  getTranscript: vi.fn(async () => []),
-  mediaUrl: (s: string, n: string) => `/api/jobs/${s}/files/${n}`,
-  streamSSE: vi.fn(),
-  uploadJob: vi.fn(),
-  putOrientation: vi.fn(),
-}));
+vi.mock("../api", async () => {
+  // A classe real, não um dublê — senão `e instanceof SlugOcupado` no
+  // UploadStep nunca casa (mesmo que o caminho não seja exercitado aqui).
+  const real = await vi.importActual<typeof import("../api")>("../api");
+  return {
+    listJobs,
+    getJob: vi.fn(async () => ({ config: {} })),
+    getCuts: vi.fn(async () => null),
+    getTranscript: vi.fn(async () => []),
+    mediaUrl: (s: string, n: string) => `/api/jobs/${s}/files/${n}`,
+    streamSSE: vi.fn(),
+    uploadJob: vi.fn(),
+    putOrientation: vi.fn(),
+    SlugOcupado: real.SlugOcupado,
+  };
+});
 
 import { RecordedWizard } from "../RecordedWizard";
 

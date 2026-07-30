@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
-import { render, fireEvent, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, fireEvent, screen, cleanup, waitFor, act } from "@testing-library/react";
 
 // vi.hoisted mantém a mesma instância do vi.fn tanto na variável local (usada
 // nos testes antigos) quanto no módulo mockado (usado via `await import
@@ -205,6 +205,29 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     await waitFor(() => expect((campo as HTMLInputElement).value).toBe("A4"));
   });
 
+  it("num backend lento, o que o usuário já digitou sobrevive à sugestão (I3)", async () => {
+    const api = await import("../api");
+    let resolverListJobs!: (v: { slug: string }[]) => void;
+    (api.listJobs as any).mockReset();
+    (api.listJobs as any).mockImplementationOnce(
+      () => new Promise<{ slug: string }[]>((resolve) => { resolverListJobs = resolve; }),
+    );
+    render(<UploadStep {...props} slug="" />);
+    const campo = (await screen.findByLabelText(/nome do projeto/i)) as HTMLInputElement;
+
+    // digita antes do listJobs responder
+    fireEvent.change(campo, { target: { value: "meu-video" } });
+    expect(campo.value).toBe("meu-video");
+
+    // agora a resposta (atrasada) chega
+    await act(async () => {
+      resolverListJobs([{ slug: "A1" }, { slug: "A2" }, { slug: "A3" }]);
+      await Promise.resolve();
+    });
+
+    expect(campo.value).toBe("meu-video");
+  });
+
   it("o 409 abre o diálogo dizendo o que existe", async () => {
     const api = await import("../api");
     (api.uploadJob as any).mockRejectedValueOnce(
@@ -235,6 +258,55 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     });
   });
 
+  it("substituir mira sempre no slug da colisão, não no que estiver no campo (C1)", async () => {
+    // O campo fica em "meu-projeto-x" (digitado à mão), mas o 409 volta
+    // dizendo que quem colidiu foi "A1" — dois nomes diferentes, de propósito.
+    // Se "Substituir" usasse o campo em vez do slug confirmado no diálogo, o
+    // upload iria para o projeto errado — exatamente o bug do incidente.
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} slug="" />);
+    const campo = (await screen.findByLabelText(/nome do projeto/i)) as HTMLInputElement;
+    fireEvent.change(campo, { target: { value: "meu-projeto-x" } });
+    expect(campo.value).toBe("meu-projeto-x");
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    await screen.findByText(/já existe/i);
+    expect(campo.value).toBe("meu-projeto-x"); // o diálogo não mexeu no campo
+    fireEvent.click(screen.getByRole("button", { name: /substituir/i }));
+    await waitFor(() => {
+      const ultima = (api.uploadJob as any).mock.calls.at(-1);
+      expect(ultima[1]).toBe("A1");
+    });
+  });
+
+  it("mudar o campo com a colisão aberta fecha o diálogo (C1)", async () => {
+    // A confirmação "O projeto A1 já existe" deixa de valer assim que o
+    // campo muda — senão dá para editar o nome com o diálogo ainda aberto
+    // e clicar "Substituir" mirando num projeto que nunca foi confirmado.
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    await screen.findByText(/já existe/i);
+
+    fireEvent.change(screen.getByLabelText(/nome do projeto/i), {
+      target: { value: "outro-projeto" },
+    });
+
+    expect(screen.queryByText(/já existe/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /substituir/i })).not.toBeInTheDocument();
+  });
+
   it("criar novo projeto troca o nome e não sobrescreve nada", async () => {
     const api = await import("../api");
     // O campo nasce em "A2" (só "A1" está ocupado)...
@@ -257,6 +329,25 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     // continuaria "A1" em vez de voltar para "A2".
     fireEvent.click(await screen.findByRole("button", { name: /criar novo/i }));
     await waitFor(() => expect(campo.value).toBe("A2"));
+  });
+
+  it("com listJobs falho, 'Criar novo projeto' não repete o slug que acabou de colidir (M3)", async () => {
+    // slugsUsados fica [] quando listJobs falha — sem excluir o slug da
+    // colisão, o botão podia sugerir de volta o mesmo nome ocupado.
+    const api = await import("../api");
+    (api.listJobs as any).mockRejectedValueOnce(new Error("offline"));
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} slug="" />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    await screen.findByText(/já existe/i);
+    const campo = screen.getByLabelText(/nome do projeto/i) as HTMLInputElement;
+    fireEvent.click(screen.getByRole("button", { name: /criar novo/i }));
+    expect(campo.value).not.toBe("A1");
   });
 
   it("abrir o existente troca o slug e avança sem reenviar", async () => {

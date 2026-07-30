@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadJob, putOrientation, getJob, listJobs, SlugOcupado } from "../api";
 import { proximoSlugLivre } from "../slug";
 import { formatSeconds } from "../util";
@@ -23,6 +23,10 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [err, setErr] = useState<string | null>(null);
   const [colisao, setColisao] = useState<JobSummary | null>(null);
   const [slugsUsados, setSlugsUsados] = useState<string[]>([]);
+  // Marca se o usuário já digitou algo no campo à mão. Num backend lento,
+  // a resposta de listJobs() pode chegar depois de quem já começou a digitar
+  // um nome — sem essa marca, a sugestão trocava o nome no meio da digitação.
+  const editadoAMao = useRef(false);
 
   // Projeto aberto pela lista já tem vídeo no servidor: carrega o probe e a
   // orientação dele para o "Próximo" liberar sem exigir reenvio. (O efeito
@@ -50,7 +54,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
         if (!vivo) return;
         const usados = l.map((j) => j.slug);
         setSlugsUsados(usados);
-        if (!slug) setLocalSlug(proximoSlugLivre(usados));
+        if (!slug && !editadoAMao.current) setLocalSlug(proximoSlugLivre(usados));
       })
       .catch(() => {});
     return () => { vivo = false; };
@@ -86,11 +90,11 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     return efetiva;
   };
 
-  const enviar = async (overwrite: boolean) => {
+  const enviar = async (overwrite: boolean, alvo: string = localSlug) => {
     if (files.length === 0) return;
     setBusy(true); setErr(null); setColisao(null);
     try {
-      const r = await uploadJob(files, localSlug, overwrite);
+      const r = await uploadJob(files, alvo, overwrite);
       setSlug(r.slug); setProbe(r.probe); setFiles([]); setChanged(false);
       const detected = r.probe
         ? orientationFromProbe(r.probe.width, r.probe.height)
@@ -129,7 +133,15 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
         <span className="text-sm text-zinc-400">Nome do projeto (slug)</span>
         <input
           className="mt-1 block w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2"
-          value={localSlug} onChange={(e) => setLocalSlug(e.target.value)}
+          value={localSlug}
+          onChange={(e) => {
+            editadoAMao.current = true;
+            setLocalSlug(e.target.value);
+            // O diálogo de colisão confirma um alvo ("O projeto X já existe").
+            // Mudar o campo invalida essa confirmação — senão "Substituir"
+            // pode acabar mirando num projeto diferente do que foi mostrado.
+            setColisao(null);
+          }}
         />
       </label>
       <label className="block">
@@ -190,7 +202,10 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => {
-                setLocalSlug(proximoSlugLivre(slugsUsados));
+                // Exclui o slug que acabou de colidir da sugestão: sem isso,
+                // com listJobs falho (slugsUsados == []) o botão podia propor
+                // de volta o mesmo nome ocupado.
+                setLocalSlug(proximoSlugLivre([...slugsUsados, colisao.slug]));
                 setColisao(null);
               }}
               className="px-3 py-1 bg-emerald-600 rounded"
@@ -204,7 +219,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
               Abrir o existente
             </button>
             <button
-              onClick={() => enviar(true)}
+              onClick={() => enviar(true, colisao.slug)}
               className="px-3 py-1 bg-red-900 rounded"
             >
               Substituir o vídeo

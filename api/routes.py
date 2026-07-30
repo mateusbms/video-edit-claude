@@ -14,8 +14,8 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, cut_result, get_state, job_summary, list_jobs, suggest_hook,
-    update_brand_kit, update_caption_style, update_config,
+    allowed_file_path, cut_result, get_state, job_summary, job_summary_minimo,
+    list_jobs, suggest_hook, update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
@@ -77,7 +77,12 @@ async def create_job(
     # guarda vive aqui, e não só no diálogo da tela, para que a sobrescrita
     # silenciosa seja impossível por qualquer caminho.
     if not overwrite:
-        existente = job_summary(Path(jobs_root) / slug, output_root)
+        job_dir = Path(jobs_root) / slug
+        # job_summary devolve None tanto para "slug não existe" quanto para
+        # "job.config.json corrompido" — os dois não podem ser tratados
+        # igual aqui, senão um config ilegível desliga a guarda e o ingest
+        # apaga source, transcrição e textos de verdade.
+        existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
         if existente and _tem_trabalho(existente):
             raise HTTPException(status_code=409, detail=existente.model_dump())
 

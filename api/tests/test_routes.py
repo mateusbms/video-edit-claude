@@ -30,6 +30,15 @@ def test_get_job_state_after_upload(client, sample_mp4):
     assert s["has_trimmed"] is False
 
 
+def test_get_job_inexistente_nao_cria_diretorio(client, tmp_root):
+    """Consultar um slug que nunca foi enviado não pode ressuscitá-lo no
+    disco — um slug obsoleto no localStorage do front não pode fazer o
+    projeto reaparecer na lista só por ter sido consultado."""
+    r = client.get("/api/jobs/inexistente")
+    assert r.status_code == 200
+    assert not (tmp_root / "jobs" / "inexistente").exists()
+
+
 def test_cut_after_ingest(client, sample_mp4):
     _upload(client, sample_mp4, "t3")
     import json

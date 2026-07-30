@@ -2,9 +2,10 @@ import re
 from dataclasses import asdict
 from pathlib import Path
 
-from pipeline.job import init_job, load_json, write_json
+from pipeline.job import JobConfig, init_job, load_json, write_json
 from pipeline.orientation import FRAME_SIZES, frame_size, resolve_orientation
 from pipeline.recipe import brand_of_kit, resolve_caption_style
+from pipeline.stages import DERIVADOS_DO_SOURCE
 from api.models import CutParams, CutResult, CutSegmentOut, Hook, JobState, JobSummary, ProbeOut
 
 
@@ -80,26 +81,76 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
     )
 
 
+def job_summary_minimo(job_dir: Path) -> JobSummary | None:
+    """Resumo mínimo de um job cujo job.config.json existe mas não pôde ser lido.
+
+    `job_summary` devolve None nesse caso — e None não pode virar "o slug não
+    existe" na guarda de upload (I1): o diretório pode ter source, corte,
+    transcrição e textos de verdade que um config corrompido não apaga. Monta
+    só o que dá para inferir da presença dos arquivos — a tela só precisa
+    saber o nome e que há trabalho.
+    """
+    if not job_dir.is_dir():
+        return None
+    source = job_dir / "source.mp4"
+    tem_algo = source.exists() or any((job_dir / nome).exists() for nome in DERIVADOS_DO_SOURCE)
+    if not tem_algo:
+        return None
+    return JobSummary(
+        slug=job_dir.name,
+        has_source=source.exists(),
+        has_trimmed=(job_dir / "trimmed.mp4").exists(),
+        has_transcript=(job_dir / "transcript.json").exists(),
+        has_hook=(job_dir / "hook.json").exists(),
+        has_recipe=(job_dir / "edit-recipe.json").exists(),
+    )
+
+
 def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
-    """Projetos existentes, do mais recente para o mais antigo."""
+    """Projetos existentes, do mais recente para o mais antigo.
+
+    Cada resumo é montado isoladamente: um render ou um refine concorrente
+    pode apagar/substituir um arquivo entre o `iterdir()` e o `stat()` de
+    `job_summary`, e isso não pode derrubar a listagem inteira — só aquele
+    job fica de fora desta resposta (a próxima varredura pega ele de novo).
+    """
     root = Path(jobs_root)
     if not root.is_dir():
         return []
-    resumos = [s for s in (job_summary(d, Path(output_root)) for d in root.iterdir()) if s]
+    resumos = []
+    for d in root.iterdir():
+        try:
+            s = job_summary(d, Path(output_root))
+        except Exception:
+            continue
+        if s:
+            resumos.append(s)
     return sorted(resumos, key=lambda s: s.updated_at, reverse=True)
 
 
 def get_state(slug: str, jobs_root: Path) -> JobState:
+    """Estado de um projeto para as telas lerem.
+
+    Lê o job.config.json direto (defaults de JobConfig se não existir) em vez
+    de chamar init_job: get_state é usado por rotas de consulta, e nada que
+    apenas consulta pode criar o diretório do job — mesmo raciocínio de
+    job_summary. Quem precisa do diretório/arquivo criados chama init_job
+    separadamente (create_job, update_config etc. já fazem isso).
+    """
     job_dir = Path(jobs_root) / slug
     probe = None
     if (job_dir / "probe.json").exists():
         d = load_json(job_dir / "probe.json")
         probe = ProbeOut(**d)
-    job = init_job(jobs_root, slug)
+    cfg_path = job_dir / "job.config.json"
+    if cfg_path.exists():
+        job_config = JobConfig(**load_json(cfg_path))
+    else:
+        job_config = JobConfig()
     config = CutParams(
-        silence_threshold_db=job.config.silence_threshold_db,
-        padding=job.config.padding,
-        min_silence=job.config.min_silence,
+        silence_threshold_db=job_config.silence_threshold_db,
+        padding=job_config.padding,
+        min_silence=job_config.min_silence,
     )
     state = JobState(
         slug=slug,
@@ -113,20 +164,20 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_render_9x16=False,
     )
     state.captionStyle = {
-        "fontSize": job.config.caption_font_size,
-        "bottom": job.config.caption_bottom,
-        "color": job.config.caption_color,
-        "highlightColor": job.config.caption_highlight,
-        "fontFamily": job.config.caption_font,
+        "fontSize": job_config.caption_font_size,
+        "bottom": job_config.caption_bottom,
+        "color": job_config.caption_color,
+        "highlightColor": job_config.caption_highlight,
+        "fontFamily": job_config.caption_font,
     }
     # o que o render vai realmente usar (brand kit já aplicado). O preview
     # precisa disso: com a fonte errada a quebra de linha da legenda diverge.
     state.captionStyleResolved = resolve_caption_style(
-        state.captionStyle, brand_of_kit(job.config.brand_kit_slug)
+        state.captionStyle, brand_of_kit(job_config.brand_kit_slug)
     )
-    state.brandKitSlug = job.config.brand_kit_slug
+    state.brandKitSlug = job_config.brand_kit_slug
     state.orientation = resolve_orientation(
-        job.config.orientation,
+        job_config.orientation,
         probe.model_dump() if probe else None,
     )
     return state

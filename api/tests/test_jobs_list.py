@@ -40,10 +40,11 @@ def test_lista_os_projetos_com_o_progresso_de_cada_um(client, tmp_root):
 
 def test_reporta_o_espaco_ocupado(client, tmp_root):
     _criar_job(tmp_root, "A1", {"source.mp4": b"x" * 100, "trimmed.mp4": b"y" * 50})
+    # mesmo conteúdo que _criar_job grava em job.config.json
+    tamanho_config = len(json.dumps({"orientation": "9x16"}).encode("utf-8"))
     item = client.get("/api/jobs").json()[0]
     assert item["bytes_source"] == 100
-    # 100 + 50 + o job.config.json
-    assert item["bytes_total"] > 150
+    assert item["bytes_total"] == 100 + 50 + tamanho_config
 
 
 def test_marca_os_renders_ja_exportados(client, tmp_root):
@@ -68,6 +69,28 @@ def test_listar_nao_cria_diretorio_para_slug_inexistente(client, tmp_root):
     """init_job cria diretório; a listagem não pode usá-lo."""
     client.get("/api/jobs")
     assert list((tmp_root / "jobs").iterdir()) == []
+
+
+def test_job_problematico_nao_derruba_a_listagem(client, tmp_root, monkeypatch):
+    """Um render ou refine concorrente pode apagar um arquivo entre o
+    iterdir() e o stat() de job_summary. Isso não pode derrubar a listagem
+    inteira com 500 — só aquele job some desta resposta."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "A1", {"trimmed.mp4": b"a"})
+    _criar_job(tmp_root, "quebrado", {"trimmed.mp4": b"b"})
+
+    original = jobs_mod.job_summary
+
+    def instavel(job_dir, output_root):
+        if job_dir.name == "quebrado":
+            raise FileNotFoundError("arquivo sumiu durante a varredura")
+        return original(job_dir, output_root)
+
+    monkeypatch.setattr(jobs_mod, "job_summary", instavel)
+
+    slugs = [j["slug"] for j in client.get("/api/jobs").json()]
+    assert slugs == ["A1"]
 
 
 def test_mais_recente_primeiro(client, tmp_root):
