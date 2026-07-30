@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 
-const { listJobs } = vi.hoisted(() => ({ listJobs: vi.fn() }));
-vi.mock("../api", () => ({ listJobs }));
+const { listJobs, putTitle, deleteJob, deleteSource } = vi.hoisted(() => ({
+  listJobs: vi.fn(),
+  putTitle: vi.fn(async () => {}),
+  deleteJob: vi.fn(async () => {}),
+  deleteSource: vi.fn(async () => {}),
+}));
+vi.mock("../api", () => ({ listJobs, putTitle, deleteJob, deleteSource }));
 
 import { ProjectsScreen } from "../ProjectsScreen";
 
@@ -13,7 +18,7 @@ const projeto = {
   has_source: true, has_trimmed: true, has_transcript: true,
   has_hook: false, has_recipe: false,
   has_render_16x9: false, has_render_9x16: true,
-  bytes_source: 379_205_809, bytes_total: 395_000_000,
+  bytes_source: 379_205_809, bytes_total: 395_000_000, bytes_render: 0,
 };
 
 describe("ProjectsScreen", () => {
@@ -76,5 +81,92 @@ describe("ProjectsScreen", () => {
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     expect(await screen.findByText(/sem vídeo/i)).toBeInTheDocument();
     expect(screen.queryByText(/só o vídeo/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectsScreen — renomear", () => {
+  it("salva o título e mostra o novo nome", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /renomear A1/i }));
+    fireEvent.change(screen.getByLabelText(/título de A1/i), {
+      target: { value: "Check-up da carteira" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /salvar nome de A1/i }));
+    await waitFor(() =>
+      expect(api.putTitle).toHaveBeenCalledWith("A1", "Check-up da carteira"));
+    expect(await screen.findByText("Check-up da carteira")).toBeInTheDocument();
+  });
+
+  it("cancelar não grava nada", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /renomear A1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
+    expect(api.putTitle).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProjectsScreen — excluir", () => {
+  it("pede confirmação antes e diz que o render sobrevive", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    expect(await screen.findByText(/vídeo já exportado/i)).toBeInTheDocument();
+    expect(api.deleteJob).not.toHaveBeenCalled();
+  });
+
+  it("confirmar apaga e tira o projeto da lista", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão/i }));
+    await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("A1"));
+    await waitFor(() => expect(screen.queryByText("A1")).not.toBeInTheDocument());
+  });
+
+  it("desistir fecha a confirmação sem apagar", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /desistir/i }));
+    expect(api.deleteJob).not.toHaveBeenCalled();
+    expect(screen.getByText("A1")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectsScreen — liberar espaço", () => {
+  it("diz o quanto libera e o que deixa de ser possível", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    expect(await screen.findByText(/detectar pausas/i)).toBeInTheDocument();
+    expect(screen.getByText(/361(,|\.)6 MB/)).toBeInTheDocument();
+  });
+
+  it("confirmar apaga só o source e atualiza a linha", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar/i }));
+    await waitFor(() => expect(api.deleteSource).toHaveBeenCalledWith("A1"));
+    expect(screen.getByText("A1")).toBeInTheDocument();
+  });
+
+  it("projeto sem source não oferece liberar espaço", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([
+      { ...projeto, has_source: false, bytes_source: 0 },
+    ]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    await screen.findByText("A1");
+    expect(screen.queryByRole("button", { name: /liberar espaço/i })).not.toBeInTheDocument();
   });
 });
