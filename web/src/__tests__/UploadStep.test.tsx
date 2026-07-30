@@ -1,14 +1,22 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, cleanup, waitFor } from "@testing-library/react";
 
-const uploadJob = vi.fn();
-const putOrientation = vi.fn(async (..._a: any[]) => {});
-const getJob = vi.fn(async (..._a: any[]) => ({}) as any);
-vi.mock("../api", () => ({
-  uploadJob: (...a: any[]) => uploadJob(...a),
-  putOrientation: (...a: any[]) => putOrientation(...a),
-  getJob: (...a: any[]) => getJob(...a),
+// vi.hoisted mantém a mesma instância do vi.fn tanto na variável local (usada
+// nos testes antigos) quanto no módulo mockado (usado via `await import
+// ("../api")` nos testes novos) — sem isso, ou os testes antigos quebram por
+// TDZ, ou os novos não conseguem chamar `.mockResolvedValueOnce` etc.
+const { uploadJob, putOrientation, getJob, listJobs } = vi.hoisted(() => ({
+  uploadJob: vi.fn(),
+  putOrientation: vi.fn(async (..._a: any[]) => {}),
+  getJob: vi.fn(async (..._a: any[]) => ({}) as any),
+  listJobs: vi.fn(async (..._a: any[]) => [] as any[]),
 }));
+vi.mock("../api", async () => {
+  // A classe real, não um dublê — senão `e instanceof SlugOcupado` no
+  // componente nunca casa e o diálogo de colisão não abre.
+  const real = await vi.importActual<typeof import("../api")>("../api");
+  return { uploadJob, putOrientation, getJob, listJobs, SlugOcupado: real.SlugOcupado };
+});
 
 import { UploadStep } from "../steps/UploadStep";
 
@@ -173,5 +181,63 @@ describe("avisos de formato cruzado", () => {
     fireEvent.click(screen.getByRole("radio", { name: /16:9/i }));
     const aviso = (await screen.findByText(/trocou o formato/i)).closest("p")!;
     expect(aviso.textContent).toMatch(/tamanho/i);
+  });
+});
+
+describe("UploadStep — projeto novo e colisão de nome", () => {
+  it("num projeto novo, sugere um nome livre em vez do slug atual", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([
+      { slug: "A1" }, { slug: "A2" }, { slug: "A3" },
+    ]);
+    render(<UploadStep {...props} slug="" />);
+    const campo = await screen.findByLabelText(/nome do projeto/i);
+    await waitFor(() => expect((campo as HTMLInputElement).value).toBe("A4"));
+  });
+
+  it("o 409 abre o diálogo dizendo o que existe", async () => {
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true, has_trimmed: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    expect(await screen.findByText(/já existe/i)).toBeInTheDocument();
+  });
+
+  it("substituir reenvia com overwrite", async () => {
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /substituir/i }));
+    await waitFor(() => {
+      const ultima = (api.uploadJob as any).mock.calls.at(-1);
+      expect(ultima[2]).toBe(true);
+    });
+  });
+
+  it("criar novo projeto troca o nome e não sobrescreve nada", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValue([{ slug: "A1" }]);
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /criar novo/i }));
+    const campo = screen.getByLabelText(/nome do projeto/i) as HTMLInputElement;
+    await waitFor(() => expect(campo.value).toBe("A2"));
   });
 });

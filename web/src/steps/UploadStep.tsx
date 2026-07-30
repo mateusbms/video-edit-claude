@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { uploadJob, putOrientation, getJob } from "../api";
+import { uploadJob, putOrientation, getJob, listJobs, SlugOcupado } from "../api";
+import { proximoSlugLivre } from "../slug";
 import { formatSeconds } from "../util";
 import type { StepProps } from "../App";
+import type { JobSummary } from "../types";
 import { orientationFromProbe, type Orientation } from "../frame";
 
 type Probe = { width: number; height: number; fps: number; duration: number };
@@ -19,6 +21,8 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [changed, setChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [colisao, setColisao] = useState<JobSummary | null>(null);
+  const [slugsUsados, setSlugsUsados] = useState<string[]>([]);
 
   // Projeto aberto pela lista já tem vídeo no servidor: carrega o probe e a
   // orientação dele para o "Próximo" liberar sem exigir reenvio. (O efeito
@@ -33,6 +37,22 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
         if (j.orientation) setOrientation(j.orientation);
       })
       .catch(() => { /* backend indisponível: fica sem probe, como antes */ });
+    return () => { vivo = false; };
+  }, [slug]);
+
+  // Num projeto novo (sem slug), o campo vinha com "video1" ou com o slug do
+  // projeto anterior — o que fazia da sobrescrita o caminho de menor esforço.
+  // Sugerimos sempre um nome livre.
+  useEffect(() => {
+    let vivo = true;
+    listJobs()
+      .then((l) => {
+        if (!vivo) return;
+        const usados = l.map((j) => j.slug);
+        setSlugsUsados(usados);
+        if (!slug) setLocalSlug(proximoSlugLivre(usados));
+      })
+      .catch(() => {});
     return () => { vivo = false; };
   }, [slug]);
 
@@ -66,22 +86,26 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     return efetiva;
   };
 
-  const onUpload = async () => {
+  const enviar = async (overwrite: boolean) => {
     if (files.length === 0) return;
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setColisao(null);
     try {
-      const r = await uploadJob(files, localSlug);
+      const r = await uploadJob(files, localSlug, overwrite);
       setSlug(r.slug); setProbe(r.probe); setFiles([]); setChanged(false);
       const detected = r.probe
         ? orientationFromProbe(r.probe.width, r.probe.height)
         : "16x9";
       await reconcileOrientation(r.slug, detected);
     } catch (e: any) {
-      setErr(e.message ?? "erro no upload");
+      // 409: o slug tem trabalho. Não é erro — é uma pergunta.
+      if (e instanceof SlugOcupado) setColisao(e.existente);
+      else setErr(e.message ?? "erro no upload");
     } finally {
       setBusy(false);
     }
   };
+
+  const onUpload = () => enviar(false);
 
   const changeOrientation = async (o: Orientation) => {
     const anterior = orientation;
@@ -144,12 +168,54 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
       )}
 
       <button
-        onClick={onUpload} disabled={files.length === 0 || busy}
+        onClick={() => onUpload()} disabled={files.length === 0 || busy}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40"
       >
         {busy ? "Enviando..." : files.length > 1 ? `Juntar e enviar (${files.length})` : "Enviar"}
       </button>
       {err && <p className="text-red-400 text-sm">{err}</p>}
+      {colisao && (
+        <div role="alertdialog" aria-label="projeto já existe"
+             className="rounded border border-amber-700 bg-amber-950/40 p-4 text-sm space-y-3">
+          <p className="text-amber-200">
+            <strong>O projeto "{colisao.slug}" já existe.</strong>{" "}
+            {[
+              colisao.has_trimmed && "corte",
+              colisao.has_transcript && "transcrição",
+              colisao.has_hook && "hook",
+              colisao.has_recipe && "textos",
+            ].filter(Boolean).join(", ") || "o vídeo enviado"}
+            {" "}está salvo nele.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                setLocalSlug(proximoSlugLivre(slugsUsados));
+                setColisao(null);
+              }}
+              className="px-3 py-1 bg-emerald-600 rounded"
+            >
+              Criar novo projeto
+            </button>
+            <button
+              onClick={() => { setSlug(colisao.slug); setColisao(null); next(); }}
+              className="px-3 py-1 bg-zinc-800 rounded"
+            >
+              Abrir o existente
+            </button>
+            <button
+              onClick={() => enviar(true)}
+              className="px-3 py-1 bg-red-900 rounded"
+            >
+              Substituir o vídeo
+            </button>
+          </div>
+          <p className="text-xs text-amber-300/70">
+            Substituir descarta corte, transcrição e textos. O vídeo já
+            exportado em output/ é mantido.
+          </p>
+        </div>
+      )}
       {probe && (
         <div className="bg-zinc-900 border border-zinc-800 rounded p-4 text-sm">
           <p>Resolução: <strong>{probe.width}×{probe.height}</strong></p>
