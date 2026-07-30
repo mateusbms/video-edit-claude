@@ -59,6 +59,11 @@ class CutResult(BaseModel):
     original_duration: float
     trimmed_duration: float
     segments: list[CutSegmentOut]
+    # mtime do trimmed.mp4. O corte e o refino reescrevem esse arquivo no mesmo
+    # caminho, então a URL sozinha não distingue as versões: sem isto o preview
+    # pode montar pedaços em cache do vídeo antigo com o novo. O front usa como
+    # `?v=` — muda exatamente quando o arquivo muda, e é estável entre remontagens.
+    trimmed_mtime: float = 0.0
 
 
 class RefineParams(BaseModel):

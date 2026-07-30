@@ -5,12 +5,37 @@ from pathlib import Path
 from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FRAME_SIZES, frame_size, resolve_orientation
 from pipeline.recipe import brand_of_kit, resolve_caption_style
-from api.models import CutParams, Hook, JobState, ProbeOut
+from api.models import CutParams, CutResult, CutSegmentOut, Hook, JobState, ProbeOut
 
 
 ALLOWED_FILES = {
     "trimmed.mp4",
 }
+
+
+def cut_result(job_dir: Path) -> CutResult | None:
+    """O resultado do corte reconstruído do disco, ou None se ainda não houve corte.
+
+    O `POST /cut` monta esse mesmo objeto a partir dos mesmos três arquivos.
+    Ter uma função só evita que a resposta ao vivo e a recarregada divirjam —
+    o passo de Cortes desmonta ao trocar de aba e precisa reconstruir tudo.
+
+    Nota: `stage_refine` reescreve trimmed.probe.json mas não cuts.json, então
+    depois de um corte manual a duração é a refinada e os segmentos são os da
+    detecção original. É a mesma combinação que o front já mostra ao vivo.
+    """
+    cuts_p = job_dir / "cuts.json"
+    probe_p = job_dir / "probe.json"
+    tprobe_p = job_dir / "trimmed.probe.json"
+    trimmed_p = job_dir / "trimmed.mp4"
+    if not (cuts_p.exists() and probe_p.exists() and tprobe_p.exists()):
+        return None
+    return CutResult(
+        original_duration=load_json(probe_p)["duration"],
+        trimmed_duration=load_json(tprobe_p)["duration"],
+        segments=[CutSegmentOut(**c) for c in load_json(cuts_p)],
+        trimmed_mtime=trimmed_p.stat().st_mtime if trimmed_p.exists() else 0.0,
+    )
 
 
 def get_state(slug: str, jobs_root: Path) -> JobState:

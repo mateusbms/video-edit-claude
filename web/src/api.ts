@@ -1,5 +1,5 @@
 import type {
-  Hook, JobState, CaptionLine, SSEEvent, Overlay,
+  Hook, JobState, CaptionLine, CutResult, SSEEvent, Overlay,
 } from "./types";
 import type { Suggestion, SuggestDefaults } from "./suggestions";
 
@@ -23,6 +23,11 @@ export async function uploadJob(files: File[], slug: string): Promise<{ slug: st
 
 export async function getJob(slug: string): Promise<JobState> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}`));
+}
+
+/** Estado do corte para o passo 2 remontar. `null` = ainda não cortou. */
+export async function getCuts(slug: string): Promise<CutResult | null> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/cuts`));
 }
 
 export async function getTranscript(slug: string): Promise<CaptionLine[]> {

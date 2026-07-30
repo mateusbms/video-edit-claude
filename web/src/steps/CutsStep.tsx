@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { streamSSE, mediaUrl } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { streamSSE, mediaUrl, getCuts, getJob } from "../api";
 import { Slider } from "../components/Slider";
 import { ProgressBar } from "../components/ProgressBar";
 import { formatSeconds, percentage } from "../util";
@@ -17,9 +17,27 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [removeList, setRemoveList] = useState<{ start: number; end: number }[]>([]);
   const [markStart, setMarkStart] = useState<number | null>(null);
-  const [refineVersion, setRefineVersion] = useState(0);
+  // versão do trimmed.mp4 (mtime): entra como `?v=` no preview. O corte e o
+  // refino reescrevem o arquivo no mesmo caminho, então sem isso o navegador
+  // pode servir pedaços do vídeo anterior — player parado em 0:00, sem duração.
+  const [trimmedVersion, setTrimmedVersion] = useState(0);
   const [refining, setRefining] = useState(false);
   const [refineProg, setRefineProg] = useState<{ n: number; total: number } | null>(null);
+
+  // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
+  // sair para a Transcrição e voltar destrói este componente. Sem reler o
+  // servidor, o trabalho de corte parecia perdido: painel vazio e sliders nos
+  // valores padrão, mesmo com cuts.json em disco.
+  useEffect(() => {
+    let vivo = true;
+    getJob(slug).then((j) => { if (vivo && j?.config) setParams(j.config); }).catch(() => {});
+    getCuts(slug).then((r) => {
+      if (!vivo || !r) return;
+      setResult(r);
+      setTrimmedVersion(r.trimmed_mtime ?? 0);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [slug]);
 
   const curTime = () => videoRef.current?.currentTime ?? 0;
   const onMarkStart = () => setMarkStart(curTime());
@@ -44,7 +62,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         done: (d) => {
           setResult((r) => (r && d.trimmed_duration != null ? { ...r, trimmed_duration: d.trimmed_duration } : r));
           setRemoveList([]);
-          setRefineVersion((v) => v + 1);
+          if (d.trimmed_mtime != null) setTrimmedVersion(d.trimmed_mtime);
         },
         error: (d) => setErr(d.detail ?? "erro ao aplicar cortes"),
       });
@@ -67,7 +85,13 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         body: JSON.stringify(params),
       }, {
         progress: (d) => { if (d.n != null && d.total != null) setProg({ n: d.n, total: d.total }); },
-        done: (d) => setResult(d as CutResult),
+        done: (d) => {
+          const r = d as CutResult;
+          setResult(r);
+          // o corte reescreveu o trimmed.mp4: nova versão para o preview não
+          // reaproveitar o vídeo do corte anterior
+          setTrimmedVersion(r.trimmed_mtime ?? 0);
+        },
         error: (d) => setErr(d.detail ?? "erro no corte"),
       });
     } catch (e: any) { setErr(e.message); }
@@ -128,7 +152,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
               return parts;
             })()}
           </div>
-          <video ref={videoRef} src={`${mediaUrl(slug, "trimmed.mp4")}${refineVersion ? `?v=${refineVersion}` : ""}`} controls
+          <video ref={videoRef} src={`${mediaUrl(slug, "trimmed.mp4")}?v=${trimmedVersion}`} controls
             className="max-h-[60vh] max-w-full block mx-auto rounded border border-zinc-800 mt-2" />
           <div className="border-t border-zinc-800 pt-3 mt-3 space-y-2">
             <p className="font-medium">Cortes manuais (opcional)</p>

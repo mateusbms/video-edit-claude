@@ -14,13 +14,13 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, get_state, suggest_hook,
+    allowed_file_path, cut_result, get_state, suggest_hook,
     update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
-    CaptionStyleParams, CutParams, CutResult, CutSegmentOut,
+    CaptionStyleParams, CutParams, CutResult,
     Hook, OrientationParams, OverlayParams, RefineParams,
     SuggestDefaults, Suggestion, TranscribeParams,
 )
@@ -90,16 +90,17 @@ def run_cut(slug: str, params: CutParams):
 
     def work(progress_cb):
         stage_cut(job, progress_cb=progress_cb)
-        cuts = load_json(job.dir / "cuts.json")
-        probe = load_json(job.dir / "probe.json")
-        tprobe = load_json(job.dir / "trimmed.probe.json")
-        return CutResult(
-            original_duration=probe["duration"],
-            trimmed_duration=tprobe["duration"],
-            segments=[CutSegmentOut(**c) for c in cuts],
-        ).model_dump()
+        resultado = cut_result(job.dir)
+        return resultado.model_dump() if resultado else None
 
     return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
+
+
+@router.get("/jobs/{slug}/cuts")
+def read_cuts(slug: str) -> CutResult | None:
+    """Estado do corte para o passo 2 remontar. `null` = ainda não cortou."""
+    jobs_root, *_ = _roots()
+    return cut_result(Path(jobs_root) / slug)
 
 
 @router.post("/jobs/{slug}/refine")
@@ -112,7 +113,13 @@ def run_refine(slug: str, params: RefineParams):
 
     def work(progress_cb):
         new_dur = stage_refine(job, remove, progress_cb=progress_cb)
-        return {"trimmed_duration": new_dur}
+        # o mtime novo vai junto: o trimmed.mp4 foi reescrito no mesmo caminho e
+        # o preview precisa de uma URL diferente para não reusar o cache antigo
+        trimmed = job.dir / "trimmed.mp4"
+        return {
+            "trimmed_duration": new_dur,
+            "trimmed_mtime": trimmed.stat().st_mtime if trimmed.exists() else 0.0,
+        }
 
     return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
 

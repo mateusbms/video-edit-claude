@@ -53,6 +53,9 @@ export type CutResult = {
   original_duration: number;
   trimmed_duration: number;
   segments: CutSegment[];
+  // mtime do trimmed.mp4, usado como `?v=` no preview: corte e refino reescrevem
+  // o arquivo no mesmo caminho, e sem isso o navegador reusa o vídeo antigo.
+  trimmed_mtime?: number;
 };
 
 export type JobState = {
