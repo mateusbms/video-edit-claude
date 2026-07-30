@@ -48,7 +48,12 @@ function itensPerdidos(j: JobSummary): string[] {
     j.has_trimmed && "o corte",
     j.has_transcript && "a transcrição",
     j.has_hook && "o hook",
-    j.has_recipe && "os textos",
+    // "os textos" é overlays.json e "as sugestões" é suggestions.json — dois
+    // arquivos independentes da recipe (update_orientation apaga
+    // edit-recipe.json ao trocar de formato, mas mantém os dois). Cada um
+    // sai da própria flag para não mentir em nenhuma das duas direções.
+    j.has_overlays && "os textos",
+    j.has_suggestions && "as sugestões",
     j.has_recipe && "a receita de render",
   ].filter((x): x is string => Boolean(x));
 }
@@ -118,6 +123,19 @@ export const ProjectsScreen: React.FC<{
     }
   };
 
+  // Uma ação falhou e a lista pode não refletir mais o disco (um 409 de
+  // "arquivo em uso" pode deixar a árvore parcialmente apagada) — recarrega
+  // em vez de manter os metadados antigos, que deixariam o usuário clicar em
+  // "Abrir" num projeto destruído pela metade. Se nem o reload funcionar
+  // (backend fora do ar), mantém a lista anterior em vez de apagá-la.
+  const recarregarAposFalha = async () => {
+    try {
+      setJobs(await listJobs());
+    } catch {
+      // sem sorte — a lista em tela fica desatualizada, mas visível
+    }
+  };
+
   const excluir = async (j: JobSummary) => {
     // Clique duplo no "Apagar mesmo assim" antes do repaint: o diálogo some
     // só depois do estado atualizar, então o segundo clique pode chegar
@@ -131,9 +149,13 @@ export const ProjectsScreen: React.FC<{
       setJobs((l) => (l ?? []).filter((x) => x.slug !== j.slug));
     } catch {
       setErr("não consegui apagar o projeto");
+      await recarregarAposFalha();
     } finally {
       desmarcarEmAndamento(j.slug);
-      setModo(null);
+      // Incondicional fechava o diálogo aberto (e ainda não confirmado) de
+      // outra linha: terminar a exclusão de A não pode fechar a confirmação
+      // de B que o usuário abriu enquanto A ainda estava em voo.
+      setModo((m) => (m?.slug === j.slug ? null : m));
     }
   };
 
@@ -150,9 +172,10 @@ export const ProjectsScreen: React.FC<{
       )));
     } catch {
       setErr("não consegui liberar o espaço");
+      await recarregarAposFalha();
     } finally {
       desmarcarEmAndamento(j.slug);
-      setModo(null);
+      setModo((m) => (m?.slug === j.slug ? null : m));
     }
   };
 
@@ -203,6 +226,10 @@ export const ProjectsScreen: React.FC<{
                       {j.title ? `${j.slug} · ` : ""}
                       {LABEL_FORMATO[j.orientation] ?? j.orientation} · {progresso(j)}
                       {" · "}{tamanho(j.bytes_total)}
+                      {/* bytes_render fica fora de bytes_total (sobrevive a excluir o
+                          projeto) — mostrado à parte para não ser confundido com o que
+                          "Liberar espaço"/"Excluir" realmente afetam. */}
+                      {j.bytes_render > 0 && ` (+ ${tamanho(j.bytes_render)} exportado)`}
                       {quando(j.updated_at) && ` · ${quando(j.updated_at)}`}
                     </p>
                   </>
@@ -250,11 +277,15 @@ export const ProjectsScreen: React.FC<{
                    className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
                 <p className="text-red-200">
                   Apagar <strong>{j.title || j.slug}</strong> {fraseDeExclusao(j)}.
-                  {(j.has_render_16x9 || j.has_render_9x16) && " O vídeo já exportado é mantido."}
+                  {(j.has_render_16x9 || j.has_render_9x16) &&
+                    ` O vídeo já exportado (${tamanho(j.bytes_render)}) é mantido.`}
                 </p>
                 <div className="flex gap-2">
+                  {/* Sem aria-label: o texto visível "Apagar mesmo assim" já é o nome
+                      acessível. Um aria-label diferente do rótulo visível quebra comando
+                      por voz (WCAG 2.5.3) e, dentro deste alertdialog, duplicava o nome
+                      dele — o próprio div já se anuncia como "confirmar exclusão de X". */}
                   <button
-                    aria-label={`confirmar exclusão de ${j.slug}`}
                     onClick={() => excluir(j)}
                     disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-red-900 rounded disabled:opacity-50"
@@ -284,7 +315,6 @@ export const ProjectsScreen: React.FC<{
                 </p>
                 <div className="flex gap-2">
                   <button
-                    aria-label={`confirmar liberar espaço de ${j.slug}`}
                     onClick={() => liberar(j)}
                     disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-amber-800 rounded disabled:opacity-50"

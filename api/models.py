@@ -174,6 +174,13 @@ class JobSummary(BaseModel):
     has_transcript: bool = False
     has_hook: bool = False
     has_recipe: bool = False
+    # overlays.json e suggestions.json são arquivos independentes da recipe:
+    # update_orientation apaga edit-recipe.json ao trocar de formato mas
+    # mantém os dois, e a Task 1 já os trata como trabalho real o bastante
+    # para bloquear o upload com 409 (ver tem_trabalho). A tela de exclusão
+    # precisa poder nomeá-los separadamente da recipe.
+    has_overlays: bool = False
+    has_suggestions: bool = False
     has_render_16x9: bool = False
     has_render_9x16: bool = False
     bytes_source: int = 0

@@ -1,3 +1,4 @@
+import glob as glob_mod
 import re
 import shutil
 from dataclasses import asdict
@@ -90,6 +91,8 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
+        has_overlays=(job_dir / "overlays.json").exists(),
+        has_suggestions=(job_dir / "suggestions.json").exists(),
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=source.stat().st_size if source.exists() else 0,
@@ -98,25 +101,43 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
     )
 
 
-def job_summary_minimo(job_dir: Path) -> JobSummary | None:
-    """Resumo mínimo de um job cujo job.config.json existe mas não pôde ser lido.
+def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
+    """Resumo mínimo de um job cujo job.config.json está ausente ou não pôde
+    ser lido.
 
     `job_summary` devolve None nesse caso — e None não pode virar "o slug não
     existe" na guarda de upload (I1): o diretório pode ter source, corte,
-    transcrição e textos de verdade que um config corrompido não apaga. Monta
-    só o que dá para inferir da presença dos arquivos — a tela só precisa
-    saber o nome e que há trabalho.
+    transcrição e textos de verdade que um config corrompido não apaga.
+    Exigido só isto (nunca job.config.json): a checagem real é `tem_trabalho`.
+
+    Calcula tamanhos, `updated_at` e flags de render do mesmo jeito que
+    `job_summary` — sem isso, um projeto nesta condição entrava na lista como
+    "16:9 · 0.0 MB", e o diálogo de "Liberar espaço" (cuja única justificativa
+    é o tamanho) abria dizendo "Libera 0.0 MB" mesmo com o source intacto.
+    Fica de fora só o que depende de um config legível: título e orientação
+    escolhida (cai no default 16:9 do model).
     """
     if not tem_trabalho(job_dir):
         return None
+    arquivos = [p for p in job_dir.iterdir() if p.is_file()]
     source = job_dir / "source.mp4"
+    slug = job_dir.name
+    renders = [output_root / f"{slug}-16x9.mp4", output_root / f"{slug}-9x16.mp4"]
     return JobSummary(
-        slug=job_dir.name,
+        slug=slug,
+        updated_at=max((p.stat().st_mtime for p in arquivos), default=0.0),
         has_source=source.exists(),
         has_trimmed=(job_dir / "trimmed.mp4").exists(),
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
+        has_overlays=(job_dir / "overlays.json").exists(),
+        has_suggestions=(job_dir / "suggestions.json").exists(),
+        has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
+        has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
+        bytes_source=source.stat().st_size if source.exists() else 0,
+        bytes_total=sum(p.stat().st_size for p in arquivos),
+        bytes_render=sum(p.stat().st_size for p in renders if p.exists()),
     )
 
 
@@ -136,7 +157,7 @@ def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
         try:
             # config ilegível cai no resumo mínimo: um projeto invisível na
             # lista não pode ser apagado, e ele ainda bloqueia o upload com 409
-            s = job_summary(d, Path(output_root)) or job_summary_minimo(d)
+            s = job_summary(d, Path(output_root)) or job_summary_minimo(d, Path(output_root))
         except Exception:
             continue
         if s:
@@ -182,24 +203,61 @@ def _job_dir_seguro(slug: str, jobs_root: Path) -> Path | None:
     return alvo
 
 
-def delete_job(slug: str, jobs_root: Path) -> bool:
-    """Apaga o diretório do job. Não toca em output/ — o render exportado
-    sobrevive de propósito. Devolve False se não havia o que apagar.
+def delete_job(slug: str, jobs_root: Path, input_root: Path) -> bool:
+    """Apaga o diretório do job e as partes de upload que criaram o source em
+    input/. Não toca em output/ — o render exportado sobrevive de propósito.
+    Devolve False se não havia o que apagar.
 
-    Levanta ArquivoEmUsoError se o rmtree esbarrar num arquivo aberto por
-    outro processo — nesse caso a árvore pode ter ficado parcialmente
-    apagada, e quem chama precisa saber que não foi uma operação limpa.
+    Levanta ArquivoEmUsoError se o rmtree (ou o unlink das partes) esbarrar
+    num arquivo aberto por outro processo — nesse caso a árvore pode ter
+    ficado parcialmente apagada, e quem chama precisa saber que não foi uma
+    operação limpa. Um FileNotFoundError no meio do rmtree não é isso: é o
+    caso de dois DELETEs concorrentes no mesmo slug, e vira o mesmo False de
+    "não havia o que apagar" (404), não um falso 409 de "arquivo em uso".
     """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
         return False
     try:
         shutil.rmtree(alvo)
+    except FileNotFoundError:
+        return False
     except OSError as e:
         raise ArquivoEmUsoError(
             "não deu para apagar: há um processo usando os arquivos deste projeto"
         ) from e
+    _apagar_partes_de_upload(alvo.name, input_root)
     return True
+
+
+def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
+    """Apaga input/<slug>-part*.<ext> — as cópias que create_job grava de cada
+    arquivo enviado antes de concatená-las em source.mp4.
+
+    Sem isto, cada projeto excluído deixava duas cópias invisíveis do vídeo
+    original em input/, numa tela cuja razão de existir é o disco não crescer
+    sem limite: nem excluir nem liberar espaço nunca as apagava.
+
+    O padrão usa glob.escape no *slug* (já validado como um único segmento de
+    jobs_root por _job_dir_seguro, mas não sanitizado contra caracteres de
+    glob) para que um slug como "x[yz]" não vire uma classe de caracteres e
+    apague partes de um projeto diferente (ex.: "xy-part0.mp4").
+    """
+    root = Path(input_root)
+    if not root.is_dir():
+        return
+    padrao = f"{glob_mod.escape(slug)}-part*"
+    for p in root.glob(padrao):
+        if not p.is_file():
+            continue
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            raise ArquivoEmUsoError(
+                "não deu para apagar: há um processo usando os arquivos deste projeto"
+            ) from e
 
 
 def delete_source(slug: str, jobs_root: Path) -> bool:
@@ -212,7 +270,8 @@ def delete_source(slug: str, jobs_root: Path) -> bool:
     Levanta ProjetoNaoEncontradoError se o diretório do projeto não existir —
     distinto de "existe mas não tem source", que devolve False. Levanta
     ArquivoEmUsoError se o unlink esbarrar num arquivo aberto por outro
-    processo.
+    processo. Um FileNotFoundError (dois DELETEs concorrentes no mesmo slug)
+    não é isso: vira o mesmo False de "não havia o que apagar".
     """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
@@ -222,6 +281,8 @@ def delete_source(slug: str, jobs_root: Path) -> bool:
         return False
     try:
         source.unlink()
+    except FileNotFoundError:
+        return False
     except OSError as e:
         raise ArquivoEmUsoError(
             "não deu para apagar: há um processo usando os arquivos deste projeto"
@@ -322,7 +383,23 @@ def update_caption_style(slug: str, jobs_root: Path, style) -> None:
 def update_title(slug: str, jobs_root: Path, title: str) -> None:
     """Grava o título legível. Espaços em volta somem, e um título só de
     espaços vira vazio — senão a lista mostraria um nome em branco em vez de
-    cair no slug."""
+    cair no slug.
+
+    Levanta ProjetoNaoEncontradoError se o projeto não existir: ao contrário
+    de update_config/update_caption_style/etc., que só são chamadas depois de
+    um upload, esta rota pode ser chamada depois de um Excluir confirmado — a
+    tela fecha o modo de renomear antes da resposta do PUT resolver, e um
+    Excluir que chega primeiro apaga o diretório embaixo dela. Usar init_job
+    sem checar antes ressuscitava o diretório recém-apagado; e as duas rotas
+    de DELETE já respondem 404 para um slug inexistente, então PUT /title
+    precisa concordar. Usa o mesmo _job_dir_seguro dos DELETEs para as rotas
+    concordarem também sobre o que é um slug válido (sem isso, no Windows um
+    slug como "projeto%5Caudio" grava job.config.json dentro de uma subpasta
+    do projeto, não no projeto).
+    """
+    alvo = _job_dir_seguro(slug, jobs_root)
+    if alvo is None or not alvo.is_dir():
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     job = init_job(jobs_root, slug)
     job.config.title = title.strip()
     write_json(job.dir / "job.config.json", asdict(job.config))

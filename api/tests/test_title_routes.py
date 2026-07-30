@@ -67,3 +67,27 @@ def test_config_antigo_sem_a_chave_le_com_default(client, tmp_root):
     (d / "job.config.json").write_text(json.dumps({"orientation": "9x16"}), encoding="utf-8")
     item = [j for j in client.get("/api/jobs").json() if j["slug"] == "antigo"][0]
     assert item["title"] == ""
+
+
+def test_titulo_de_projeto_inexistente_responde_404_e_nao_cria(client, tmp_root):
+    """PUT /title não pode criar o projeto: alinhado com os dois DELETEs, que
+    respondem 404 para o mesmo slug em vez de trazer o diretório à vida —
+    sem isso, um Excluir confirmado logo após um PUT /title pendurado podia
+    ser "desfeito" pelo próprio PUT ressuscitando o diretório."""
+    r = client.put("/api/jobs/nunca-existiu/title", json={"title": "x"})
+    assert r.status_code == 404
+    assert not (tmp_root / "jobs" / "nunca-existiu").exists()
+
+
+def test_titulo_com_barra_invertida_nao_escreve_fora_do_projeto(client, tmp_root):
+    """Mesmo cuidado de caminho que os DELETEs: no Windows `%5C` é separador,
+    então um slug "projeto\\audio" não pode gravar job.config.json dentro de
+    uma subpasta do projeto como se fosse o projeto inteiro."""
+    d = tmp_root / "jobs" / "projeto"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text(json.dumps({"orientation": "9x16"}), encoding="utf-8")
+    (d / "audio").mkdir()
+
+    r = client.put("/api/jobs/projeto%5Caudio/title", json={"title": "x"})
+    assert r.status_code == 404
+    assert not (d / "audio" / "job.config.json").exists()

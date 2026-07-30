@@ -70,7 +70,7 @@ async def create_job(
         job_dir = Path(jobs_root) / slug
         if tem_trabalho(job_dir):
             try:
-                existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
+                existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir, output_root)
             except Exception:
                 # Mesma corrida com um DELETE concorrente, mas pegando o caso em
                 # que job_summary não devolve None e sim levanta — um rmtree em
@@ -110,10 +110,11 @@ def read_job(slug: str):
 
 @router.delete("/jobs/{slug}")
 def remove_job(slug: str):
-    """Apaga o projeto. O render exportado em output/ é mantido."""
-    jobs_root, *_ = _roots()
+    """Apaga o projeto e as partes de upload que geraram o source em input/.
+    O render exportado em output/ é mantido."""
+    jobs_root, input_root, _ = _roots()
     try:
-        apagou = delete_job(slug, jobs_root)
+        apagou = delete_job(slug, jobs_root, input_root)
     except ArquivoEmUsoError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not apagou:
@@ -145,8 +146,13 @@ def put_orientation(slug: str, params: OrientationParams):
 
 @router.put("/jobs/{slug}/title")
 def put_title(slug: str, params: TitleParams):
+    """Alinhado com os dois DELETEs: um slug que não existe responde 404 em
+    vez de criar o projeto (ver ProjetoNaoEncontradoError em update_title)."""
     jobs_root, *_ = _roots()
-    update_title(slug, jobs_root, params.title)
+    try:
+        update_title(slug, jobs_root, params.title)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     return {"ok": True}
 
 

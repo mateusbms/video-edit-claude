@@ -146,3 +146,24 @@ def test_diretorio_vazio_continua_fora_da_lista(client, tmp_root):
     d.mkdir(parents=True)
     (d / "job.config.json").write_text("{{{", encoding="utf-8")
     assert client.get("/api/jobs").json() == []
+
+
+def test_config_ilegivel_reporta_tamanhos_reais_nao_zerados(client, tmp_root):
+    """job_summary_minimo é o resumo usado quando job.config.json está
+    ilegível. Antes desta correção ele não recebia output_root e devolvia
+    bytes_source/bytes_total/bytes_render e updated_at todos zerados — a
+    linha aparecia como "16:9 · 0.0 MB" e o diálogo de "Liberar espaço", cuja
+    única justificativa é o tamanho, abria dizendo "Libera 0.0 MB" com o
+    source intacto."""
+    d = tmp_root / "jobs" / "quebrado2"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{ isto não é json", encoding="utf-8")
+    (d / "source.mp4").write_bytes(b"x" * 100)
+    (tmp_root / "output" / "quebrado2-9x16.mp4").write_bytes(b"z" * 40)
+
+    item = [j for j in client.get("/api/jobs").json() if j["slug"] == "quebrado2"][0]
+    assert item["bytes_source"] == 100
+    assert item["bytes_total"] >= 100
+    assert item["bytes_render"] == 40
+    assert item["has_render_9x16"] is True
+    assert item["updated_at"] > 0

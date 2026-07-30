@@ -16,7 +16,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const projeto = {
   slug: "A1", title: "", updated_at: 1_700_000_000, orientation: "9x16" as const,
   has_source: true, has_trimmed: true, has_transcript: true,
-  has_hook: false, has_recipe: false,
+  has_hook: false, has_recipe: false, has_overlays: false, has_suggestions: false,
   has_render_16x9: false, has_render_9x16: true,
   bytes_source: 379_205_809, bytes_total: 395_000_000, bytes_render: 0,
 };
@@ -46,6 +46,22 @@ describe("ProjectsScreen", () => {
     listJobs.mockResolvedValueOnce([projeto]);
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     expect(await screen.findByText(/376(,|\.)7 MB/)).toBeInTheDocument();
+  });
+
+  it("mostra o tamanho do render exportado na linha, separado do tamanho do projeto", async () => {
+    // bytes_render foi modelado, tipado e testado no backend (N4), mas nunca
+    // aparecia na tela — só tamanho(bytes_total), que não inclui output/.
+    listJobs.mockResolvedValueOnce([{ ...projeto, bytes_render: 40_000_000 }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    expect(await screen.findByText(/376(,|\.)7 MB/)).toBeInTheDocument();
+    expect(screen.getByText(/38(,|\.)1 MB/)).toBeInTheDocument();
+  });
+
+  it("sem render exportado, não mostra tamanho de render nenhum", async () => {
+    listJobs.mockResolvedValueOnce([{ ...projeto, bytes_render: 0 }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    await screen.findByText("A1");
+    expect(screen.queryByText(/exportado/i)).not.toBeInTheDocument();
   });
 
   it("sem projetos, convida a criar o primeiro", async () => {
@@ -124,7 +140,7 @@ describe("ProjectsScreen — excluir", () => {
     (api.listJobs as any).mockResolvedValueOnce([projeto]);
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
     await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("A1"));
     await waitFor(() => expect(screen.queryByText("A1")).not.toBeInTheDocument());
   });
@@ -150,6 +166,32 @@ describe("ProjectsScreen — excluir", () => {
     expect(aviso.textContent).toMatch(/hook/i);
     expect(aviso.textContent).toMatch(/receita de render/i);
     expect(aviso.textContent).toMatch(/vídeo já exportado/i);
+  });
+
+  it("cita o tamanho do render mantido na confirmação de exclusão", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([{ ...projeto, bytes_render: 40_000_000 }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso.textContent).toMatch(/38(,|\.)1 MB/);
+  });
+
+  it("nomeia os textos e as sugestões separadamente da receita de render", async () => {
+    // Caminho determinístico do achado N1: o usuário termina os textos
+    // (overlays.json + a recipe), depois troca a orientação — update_orientation
+    // apaga edit-recipe.json mas mantém overlays.json e suggestions.json.
+    // has_recipe sozinho não pode ser a fonte de "os textos": o projeto os
+    // perderia sem o diálogo nunca ter avisado.
+    const api = await import("../api");
+    const soTextos = { ...projeto, has_recipe: false, has_overlays: true, has_suggestions: true };
+    (api.listJobs as any).mockResolvedValueOnce([soTextos]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso.textContent).toMatch(/os textos/i);
+    expect(aviso.textContent).toMatch(/as sugestões/i);
+    expect(aviso.textContent).not.toMatch(/receita de render/i);
   });
 
   it("não menciona o que o projeto não tem", async () => {
@@ -182,7 +224,7 @@ describe("ProjectsScreen — excluir", () => {
     (api.listJobs as any).mockResolvedValueOnce([projeto]);
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
-    const confirmar = await screen.findByRole("button", { name: /confirmar exclusão/i });
+    const confirmar = await screen.findByRole("button", { name: /apagar mesmo assim/i });
     // Um único `act` em volta dos dois cliques simula o clique duplo antes do
     // repaint: sem isso, o primeiro `fireEvent.click` já flusha e desmonta o
     // diálogo antes do segundo clique ser disparado, mascarando o bug.
@@ -210,15 +252,47 @@ describe("ProjectsScreen — excluir", () => {
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão de A1/i }));
+    // Só um diálogo por vez (modo global): "Apagar mesmo assim" sem qualificar
+    // a linha ainda casa com exatamente um botão em cada passo deste teste.
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
     await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("A1"));
 
     // A1 ainda não terminou. Mesmo assim, confirmar B1 tem que funcionar.
     fireEvent.click(await screen.findByRole("button", { name: /excluir B1/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão de B1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
     await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("B1"));
 
     resolverA();
+  });
+
+  it("terminar a exclusão de uma linha não fecha o diálogo aberto (e ainda não confirmado) de outra", async () => {
+    const api = await import("../api");
+    const projetoB = { ...projeto, slug: "B1" };
+    (api.listJobs as any).mockResolvedValueOnce([projeto, projetoB]);
+
+    let resolverA: () => void = () => {};
+    (api.deleteJob as any).mockImplementation((slug: string) => {
+      if (slug === "A1") return new Promise<void>((resolve) => { resolverA = resolve; });
+      return Promise.resolve();
+    });
+
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
+    await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("A1"));
+
+    // Abre (sem confirmar) o diálogo de B1 enquanto A1 ainda está em voo —
+    // o modo global passa a apontar para B1.
+    fireEvent.click(await screen.findByRole("button", { name: /excluir B1/i }));
+    await screen.findByRole("alertdialog", { name: /confirmar exclusão de B1/i });
+
+    // A1 termina com sucesso. O `finally` de excluir(A1) não pode fechar o
+    // diálogo de B1, que nunca foi confirmado.
+    resolverA();
+    await waitFor(() => expect(screen.queryByText("A1")).not.toBeInTheDocument());
+
+    expect(screen.getByRole("alertdialog", { name: /confirmar exclusão de B1/i })).toBeInTheDocument();
   });
 
   it("projeto sem nenhum artefato não diz 'descarta nada'", async () => {
@@ -281,12 +355,13 @@ describe("ProjectsScreen — liberar espaço", () => {
 describe("ProjectsScreen — erro entre ações", () => {
   it("erro de uma ação não fica pendurado depois de outra dar certo", async () => {
     const api = await import("../api");
-    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    // uma vez para a carga inicial, outra para o reload que a falha dispara (N3)
+    (api.listJobs as any).mockResolvedValueOnce([projeto]).mockResolvedValueOnce([projeto]);
     (api.deleteJob as any).mockRejectedValueOnce(new Error("falhou"));
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
     expect(await screen.findByText(/não consegui apagar/i)).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: /renomear A1/i }));
@@ -295,5 +370,39 @@ describe("ProjectsScreen — erro entre ações", () => {
     await waitFor(() => expect(api.putTitle).toHaveBeenCalled());
 
     expect(screen.queryByText(/não consegui apagar/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectsScreen — falha recarrega a lista (N3)", () => {
+  it("falha ao excluir recarrega a lista — a árvore pode ter ficado parcialmente apagada", async () => {
+    const api = await import("../api");
+    (api.listJobs as any)
+      .mockResolvedValueOnce([projeto])
+      // depois do 409, o próprio projeto sumiu (delete parcial concorrente)
+      .mockResolvedValueOnce([]);
+    (api.deleteJob as any).mockRejectedValueOnce(new Error("arquivo em uso"));
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
+
+    await waitFor(() => expect(api.listJobs).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("A1")).not.toBeInTheDocument());
+  });
+
+  it("falha ao liberar espaço recarrega a lista", async () => {
+    const api = await import("../api");
+    (api.listJobs as any)
+      .mockResolvedValueOnce([projeto])
+      .mockResolvedValueOnce([{ ...projeto, has_source: false, bytes_source: 0 }]);
+    (api.deleteSource as any).mockRejectedValueOnce(new Error("arquivo em uso"));
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+
+    await waitFor(() => expect(api.listJobs).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /liberar espaço/i })).not.toBeInTheDocument());
   });
 });

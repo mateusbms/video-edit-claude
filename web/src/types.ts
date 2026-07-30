@@ -87,6 +87,11 @@ export type JobSummary = {
   has_transcript: boolean;
   has_hook: boolean;
   has_recipe: boolean;
+  // overlays.json e suggestions.json são arquivos independentes da recipe
+  // (update_orientation apaga edit-recipe.json ao trocar de formato, mas
+  // mantém os dois) — a tela de exclusão precisa nomeá-los separadamente.
+  has_overlays: boolean;
+  has_suggestions: boolean;
   has_render_16x9: boolean;
   has_render_9x16: boolean;
   bytes_source: number;

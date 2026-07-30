@@ -44,6 +44,21 @@ def test_o_projeto_some_da_listagem(client, tmp_root):
     assert "d3" not in [j["slug"] for j in client.get("/api/jobs").json()]
 
 
+def test_apagar_projeto_pelo_http_remove_as_partes_de_upload(client, tmp_root):
+    """Mesmo teste do achado N4, mas pela rota HTTP: DELETE /api/jobs/{slug}
+    precisa varrer input/ com o INPUT_ROOT resolvido por _roots(), não só a
+    função de baixo nível."""
+    _criar_job(tmp_root, "d8", {"source.mp4": b"x"})
+    partes_root = tmp_root / "input"
+    (partes_root / "d8-part0.mp4").write_bytes(b"parte0")
+    (partes_root / "outro-part0.mp4").write_bytes(b"nao mexer")
+
+    r = client.delete("/api/jobs/d8")
+    assert r.status_code == 200
+    assert not (partes_root / "d8-part0.mp4").exists()
+    assert (partes_root / "outro-part0.mp4").exists()
+
+
 def test_libera_espaco_apagando_so_o_source(client, tmp_root):
     _criar_job(tmp_root, "d4", {
         "source.mp4": b"x" * 100,
@@ -138,12 +153,13 @@ def test_delete_job_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
 
     jobs_root = tmp_path / "jobs"
     jobs_root.mkdir()
+    input_root = tmp_path / "input"
     vizinho = jobs_root.parent / "vizinho-fora-de-jobs"
     vizinho.mkdir()
     (vizinho / "marca.txt").write_text("nao pode sumir", encoding="utf-8")
 
-    assert delete_job("..", jobs_root) is False
-    assert delete_job("../vizinho-fora-de-jobs", jobs_root) is False
+    assert delete_job("..", jobs_root, input_root) is False
+    assert delete_job("../vizinho-fora-de-jobs", jobs_root, input_root) is False
     assert vizinho.exists()
 
 
@@ -155,14 +171,66 @@ def test_delete_job_recusa_barra_invertida_para_subdiretorio(tmp_path):
 
     jobs_root = tmp_path / "jobs"
     jobs_root.mkdir()
+    input_root = tmp_path / "input"
     projeto = jobs_root / "a"
     projeto.mkdir()
     sub = projeto / "b"
     sub.mkdir()
     (sub / "narracao.mp3").write_bytes(b"caro")
 
-    assert delete_job("a\\b", jobs_root) is False
+    assert delete_job("a\\b", jobs_root, input_root) is False
     assert (sub / "narracao.mp3").exists()
+
+
+def test_delete_job_apaga_as_partes_de_upload_originais(tmp_path):
+    """create_job grava uma cópia de cada arquivo enviado em
+    input/<slug>-part*.mp4 antes de concatená-las em source.mp4. Excluir o
+    projeto sem apagar essas cópias deixa duas cópias invisíveis do vídeo
+    original em disco — numa tela cuja razão de existir é o disco não crescer
+    sem limite."""
+    from api.jobs import delete_job
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    projeto = jobs_root / "d9"
+    projeto.mkdir()
+    (projeto / "job.config.json").write_text("{}", encoding="utf-8")
+
+    (input_root / "d9-part0.mp4").write_bytes(b"parte0")
+    (input_root / "d9-part1.mp4").write_bytes(b"parte1")
+    alheia = input_root / "outro-part0.mp4"
+    alheia.write_bytes(b"nao pode sumir")
+
+    assert delete_job("d9", jobs_root, input_root) is True
+    assert not (input_root / "d9-part0.mp4").exists()
+    assert not (input_root / "d9-part1.mp4").exists()
+    assert alheia.exists()
+
+
+def test_delete_job_escapa_caracteres_de_glob_no_slug_ao_apagar_partes(tmp_path):
+    """Sem glob.escape, um slug com colchetes vira uma classe de caracteres no
+    padrão glob e pode casar com o prefixo de outro projeto em input/ — aqui
+    "x[yz]" sem escape casaria com "xy-part0.mp4" ou "xz-part0.mp4"."""
+    from api.jobs import delete_job
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    slug = "x[yz]"
+    projeto = jobs_root / slug
+    projeto.mkdir()
+    (projeto / "job.config.json").write_text("{}", encoding="utf-8")
+
+    alheia = input_root / "xy-part0.mp4"
+    alheia.write_bytes(b"pertence a outro projeto")
+
+    assert delete_job(slug, jobs_root, input_root) is True
+    assert alheia.exists(), "glob sem escape no slug apagou parte de outro projeto"
 
 
 def test_delete_source_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
@@ -216,3 +284,39 @@ def test_delete_source_traduz_erro_de_arquivo_em_uso(client, tmp_root, monkeypat
     r = client.delete("/api/jobs/trava2/source")
     assert r.status_code == 409
     assert "processo" in r.json()["detail"].lower()
+
+
+def test_delete_job_concorrente_no_mesmo_slug_devolve_404_nao_409(client, tmp_root, monkeypatch):
+    """Duas requisições DELETE concorrentes no mesmo slug: a segunda encontra
+    o diretório já sumido durante o rmtree. FileNotFoundError não é "arquivo
+    em uso" — é "não havia o que apagar", o mesmo 404 de um slug que nunca
+    existiu. Antes desta correção, `except OSError` capturava
+    FileNotFoundError (subclasse de OSError) junto com PermissionError e
+    respondia 409 para as duas."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "concorrente", {"source.mp4": b"x"})
+
+    def _rmtree_sumiu(*args, **kwargs):
+        raise FileNotFoundError(2, "não é possível localizar o arquivo especificado")
+
+    monkeypatch.setattr(jobs_mod.shutil, "rmtree", _rmtree_sumiu)
+
+    r = client.delete("/api/jobs/concorrente")
+    assert r.status_code == 404
+
+
+def test_delete_source_concorrente_no_mesmo_slug_devolve_404_nao_409(client, tmp_root, monkeypatch):
+    """Simétrico do teste acima para /source: um FileNotFoundError no unlink
+    (a segunda de duas chamadas concorrentes) não pode virar 409."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "concorrente2", {"source.mp4": b"x"})
+
+    def _unlink_sumiu(self, *args, **kwargs):
+        raise FileNotFoundError(2, "não é possível localizar o arquivo especificado")
+
+    monkeypatch.setattr(jobs_mod.Path, "unlink", _unlink_sumiu)
+
+    r = client.delete("/api/jobs/concorrente2/source")
+    assert r.status_code == 404

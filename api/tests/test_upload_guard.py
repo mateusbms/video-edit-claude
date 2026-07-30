@@ -84,6 +84,21 @@ def test_config_corrompido_nao_desliga_a_guarda(client, tmp_root, sample_mp4):
     assert (d / "transcript.json").exists()
 
 
+def test_409_com_config_corrompido_reporta_tamanho_real(client, tmp_root, sample_mp4):
+    """O 409 desta guarda também passa por job_summary_minimo quando o config
+    está corrompido. Antes de job_summary_minimo receber output_root (N2), o
+    detail vinha com bytes_source e bytes_render zerados mesmo com o source
+    intacto no disco — a UI monta o diálogo direto deste corpo, sem outra
+    chamada."""
+    d = tmp_root / "jobs" / "A1"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{", encoding="utf-8")
+    (d / "source.mp4").write_bytes(b"x" * 100)
+
+    detail = _upload(client, "A1", sample_mp4).json()["detail"]
+    assert detail["bytes_source"] == 100
+
+
 def test_guarda_conta_overlays_como_trabalho(client, tmp_root, sample_mp4):
     """stage_ingest apaga overlays.json; a guarda precisa protegê-lo."""
     d = tmp_root / "jobs" / "ov"
@@ -113,7 +128,7 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
 
     _criar_job_com_trabalho(tmp_root, "A1")
     monkeypatch.setattr(routes_mod, "job_summary", lambda job_dir, output_root: None)
-    monkeypatch.setattr(routes_mod, "job_summary_minimo", lambda job_dir: None)
+    monkeypatch.setattr(routes_mod, "job_summary_minimo", lambda job_dir, output_root: None)
 
     r = _upload(client, "A1", sample_mp4)
 
