@@ -401,7 +401,6 @@ async def run_render(slug: str):
     env = _build_remotion_env()
 
     async def gen():
-        from collections import deque
         for fmt_key, composition, out_name in jobs_to_run:
             out_path = output_root_abs / out_name
             try:
@@ -409,26 +408,33 @@ async def run_render(slug: str):
             except Exception as e:
                 yield sse_event("error", {"detail": str(e)})
                 return
-            tail: deque[str] = deque(maxlen=15)  # últimas linhas para erro
-            while True:
-                raw = await proc.stdout.readline()
-                if not raw:
-                    break
-                line = raw.decode(errors="ignore").strip()
-                if not line:
-                    continue
-                p = render_mod.parse_progress(line)
-                if p:
-                    kind, n, total = p
-                    yield sse_event("progress",
-                                    {"format": fmt_key, "kind": kind, "n": n, "total": total})
-                else:
-                    tail.append(line)
+            # A saída inteira vai para disco. O painel de erro só cabe as últimas
+            # linhas, e o stack trace do Remotion tem altura suficiente para
+            # empurrar a mensagem de verdade para fora dessa janela — foi o que
+            # aconteceu num "retornou 1" e deixou o erro sem causa visível.
+            log_path = job_dir / "render.log"
+            tail = render_mod.ErrorTail()
+            with log_path.open("w", encoding="utf-8", errors="ignore") as log_file:
+                while True:
+                    raw = await proc.stdout.readline()
+                    if not raw:
+                        break
+                    line = raw.decode(errors="ignore").strip()
+                    if not line:
+                        continue
+                    log_file.write(line + "\n")
+                    p = render_mod.parse_progress(line)
+                    if p:
+                        kind, n, total = p
+                        yield sse_event("progress",
+                                        {"format": fmt_key, "kind": kind, "n": n, "total": total})
+                    else:
+                        tail.add(line)
             rc = await proc.wait()
             if rc != 0:
                 yield sse_event("error", {
                     "detail": f"render {fmt_key} retornou {rc}",
-                    "log": "\n".join(tail),
+                    "log": tail.render(log_path),
                 })
                 return
             yield sse_event("progress",

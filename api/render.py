@@ -1,9 +1,53 @@
 import asyncio
 import re
 import shutil
+from collections import deque
 from pathlib import Path
 
 PROG_RE = re.compile(r"^(Rendered|Encoded)\s+(\d+)/(\d+)")
+
+# códigos de cor ANSI que o Remotion emite; atrapalham o casamento da mensagem
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+# linha que carrega a explicação da falha, e não mais um quadro do stack trace
+ERRO_RE = re.compile(
+    r"^(Error|TypeError|ReferenceError|RangeError|SyntaxError|EvalError|URIError)\b"
+    r"|^\w*Error:"
+    r"|out of memory|ENOSPC|ENOMEM",
+    re.IGNORECASE,
+)
+
+
+def parece_erro(line: str) -> bool:
+    return bool(ERRO_RE.search(ANSI_RE.sub("", line).strip()))
+
+
+class ErrorTail:
+    """Últimas linhas da saída do Remotion, com a mensagem de erro preservada.
+
+    O painel de erro da UI mostra um trecho curto. O stack trace do Remotion tem
+    altura suficiente para empurrar a linha que explica a falha para fora dessa
+    janela — foi assim que um "retornou 1" chegou ao usuário sem causa visível.
+    A primeira linha que parece a mensagem de erro é guardada à parte e sempre
+    aparece, mesmo que o trace a tenha expulsado do fim.
+    """
+
+    def __init__(self, maxlen: int = 40):
+        self._tail: deque[str] = deque(maxlen=maxlen)
+        self.primeiro_erro: str | None = None
+
+    def add(self, line: str) -> None:
+        if self.primeiro_erro is None and parece_erro(line):
+            self.primeiro_erro = line
+        self._tail.append(line)
+
+    def render(self, log_path: Path | None = None) -> str:
+        partes: list[str] = []
+        if self.primeiro_erro is not None and self.primeiro_erro not in self._tail:
+            partes.extend([self.primeiro_erro, "..."])
+        partes.extend(self._tail)
+        if log_path is not None:
+            partes.append(f"\n(saída completa em {log_path})")
+        return "\n".join(partes)
 
 # Logical composition names returned by composition_id_for.
 COMPOSITION_MAP = {
@@ -59,8 +103,7 @@ async def dispatch_render(
         await q.put(sse_event_dict("error", {"detail": str(exc)}))
         return
 
-    from collections import deque
-    tail: deque[str] = deque(maxlen=15)
+    tail = ErrorTail()
     while True:
         raw = await proc.stdout.readline()
         if not raw:
@@ -73,13 +116,13 @@ async def dispatch_render(
             kind, n, total = p
             await q.put(sse_event_dict("progress", {"kind": kind, "n": n, "total": total}))
         else:
-            tail.append(line)
+            tail.add(line)
 
     rc = await proc.wait()
     if rc != 0:
         await q.put(sse_event_dict("error", {
             "detail": f"render retornou {rc}",
-            "log": "\n".join(tail),
+            "log": tail.render(),
         }))
     else:
         await q.put(sse_event_dict("done", {"ok": True}))
