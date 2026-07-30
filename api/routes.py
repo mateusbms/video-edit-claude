@@ -14,9 +14,10 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, cut_result, get_state, job_summary, job_summary_minimo,
-    list_jobs, suggest_hook, tem_trabalho, update_brand_kit, update_caption_style,
-    update_config, update_hook_card_frames, update_orientation, update_title,
+    allowed_file_path, cut_result, delete_job, delete_source, get_state,
+    job_summary, job_summary_minimo, list_jobs, suggest_hook, tem_trabalho,
+    update_brand_kit, update_caption_style, update_config,
+    update_hook_card_frames, update_orientation, update_title,
     update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
@@ -69,7 +70,11 @@ async def create_job(
         job_dir = Path(jobs_root) / slug
         if tem_trabalho(job_dir):
             existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
-            raise HTTPException(status_code=409, detail=existente.model_dump())
+            # Corrida com um DELETE concorrente: tem_trabalho() viu True, mas os
+            # arquivos sumiram antes de montar o resumo. Sem trabalho para
+            # proteger, o upload segue — não há mais 409 a devolver.
+            if existente is not None:
+                raise HTTPException(status_code=409, detail=existente.model_dump())
 
     paths: list[str] = []
     for i, f in enumerate(files):
@@ -94,6 +99,24 @@ def read_job(slug: str):
     state.has_render_16x9 = (output_root / f"{slug}-16x9.mp4").exists()
     state.has_render_9x16 = (output_root / f"{slug}-9x16.mp4").exists()
     return state.model_dump()
+
+
+@router.delete("/jobs/{slug}")
+def remove_job(slug: str):
+    """Apaga o projeto. O render exportado em output/ é mantido."""
+    jobs_root, *_ = _roots()
+    if not delete_job(slug, jobs_root):
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    return {"ok": True}
+
+
+@router.delete("/jobs/{slug}/source")
+def remove_source(slug: str):
+    """Apaga só o vídeo original, para liberar espaço."""
+    jobs_root, *_ = _roots()
+    if not delete_source(slug, jobs_root):
+        raise HTTPException(status_code=404, detail="este projeto não tem vídeo original")
+    return {"ok": True}
 
 
 @router.put("/jobs/{slug}/orientation")

@@ -1,4 +1,5 @@
 import re
+import shutil
 from dataclasses import asdict
 from pathlib import Path
 
@@ -141,6 +142,46 @@ def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
         if s:
             resumos.append(s)
     return sorted(resumos, key=lambda s: s.updated_at, reverse=True)
+
+
+def _job_dir_seguro(slug: str, jobs_root: Path) -> Path | None:
+    """Caminho do job, ou None se o slug tentar escapar de jobs_root.
+
+    Apagar é irreversível e não há lixeira: um slug com `..` ou barra não pode
+    virar um caminho fora da pasta de jobs.
+    """
+    root = Path(jobs_root).resolve()
+    alvo = (root / slug).resolve()
+    if alvo == root or root not in alvo.parents:
+        return None
+    return alvo
+
+
+def delete_job(slug: str, jobs_root: Path) -> bool:
+    """Apaga o diretório do job. Não toca em output/ — o render exportado
+    sobrevive de propósito. Devolve False se não havia o que apagar."""
+    alvo = _job_dir_seguro(slug, jobs_root)
+    if alvo is None or not alvo.is_dir():
+        return False
+    shutil.rmtree(alvo)
+    return True
+
+
+def delete_source(slug: str, jobs_root: Path) -> bool:
+    """Apaga só o source.mp4, mantendo corte, transcrição e textos.
+
+    O que se perde: refazer o corte automático (stage_cut é o único leitor do
+    source) e o master em resolução original. O que continua: transcrever,
+    editar textos, cortes manuais e renderizar, que operam sobre o trimmed.
+    """
+    alvo = _job_dir_seguro(slug, jobs_root)
+    if alvo is None:
+        return False
+    source = alvo / "source.mp4"
+    if not source.exists():
+        return False
+    source.unlink()
+    return True
 
 
 def get_state(slug: str, jobs_root: Path) -> JobState:

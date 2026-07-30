@@ -99,3 +99,20 @@ def test_guarda_conta_sugestoes_como_trabalho(client, tmp_root, sample_mp4):
     (d / "job.config.json").write_text(json.dumps({}), encoding="utf-8")
     (d / "suggestions.json").write_text("[]", encoding="utf-8")
     assert _upload(client, "sg", sample_mp4).status_code == 409
+
+
+def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
+    client, tmp_root, sample_mp4, monkeypatch
+):
+    """Corrida com o DELETE: tem_trabalho() viu True, mas os arquivos sumiram
+    antes de montar o 409 — existente fica None e o upload precisa seguir, não
+    estourar 500 num .model_dump() de None."""
+    import api.routes as routes_mod
+
+    _criar_job_com_trabalho(tmp_root, "A1")
+    monkeypatch.setattr(routes_mod, "job_summary", lambda job_dir, output_root: None)
+    monkeypatch.setattr(routes_mod, "job_summary_minimo", lambda job_dir: None)
+
+    r = _upload(client, "A1", sample_mp4)
+
+    assert r.status_code == 200
