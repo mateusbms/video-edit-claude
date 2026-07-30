@@ -193,6 +193,48 @@ describe("ProjectsScreen — excluir", () => {
     await waitFor(() => expect(api.deleteJob).toHaveBeenCalled());
     expect(api.deleteJob).toHaveBeenCalledTimes(1);
   });
+
+  it("uma exclusão em voo numa linha não bloqueia a exclusão de outra linha", async () => {
+    const api = await import("../api");
+    const projetoB = { ...projeto, slug: "B1" };
+    (api.listJobs as any).mockResolvedValueOnce([projeto, projetoB]);
+
+    // deleteJob("A1") fica pendurado (não resolve sozinho); deleteJob("B1")
+    // resolve normalmente — simula A ainda em voo quando B é confirmado.
+    let resolverA: () => void = () => {};
+    (api.deleteJob as any).mockImplementation((slug: string) => {
+      if (slug === "A1") return new Promise<void>((resolve) => { resolverA = resolve; });
+      return Promise.resolve();
+    });
+
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão de A1/i }));
+    await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("A1"));
+
+    // A1 ainda não terminou. Mesmo assim, confirmar B1 tem que funcionar.
+    fireEvent.click(await screen.findByRole("button", { name: /excluir B1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar exclusão de B1/i }));
+    await waitFor(() => expect(api.deleteJob).toHaveBeenCalledWith("B1"));
+
+    resolverA();
+  });
+
+  it("projeto sem nenhum artefato não diz 'descarta nada'", async () => {
+    const api = await import("../api");
+    const vazio = {
+      ...projeto,
+      has_source: false, has_trimmed: false, has_transcript: false, has_hook: false,
+      has_recipe: false, has_render_16x9: false, has_render_9x16: false,
+    };
+    (api.listJobs as any).mockResolvedValueOnce([vazio]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso.textContent).not.toMatch(/descarta nada/i);
+    expect(aviso.textContent).toMatch(/vazio/i);
+  });
 });
 
 describe("ProjectsScreen — liberar espaço", () => {

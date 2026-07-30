@@ -53,6 +53,13 @@ function itensPerdidos(j: JobSummary): string[] {
   ].filter((x): x is string => Boolean(x));
 }
 
+/** A frase de "o que se perde", incluindo o caso de um projeto sem nada ainda. */
+function fraseDeExclusao(j: JobSummary): string {
+  const itens = itensPerdidos(j);
+  if (itens.length === 0) return "não tem nada a perder — o projeto ainda está vazio";
+  return `descarta ${listaNatural(itens)}`;
+}
+
 // Uma linha por vez em modo de edição ou confirmação — duas confirmações
 // destrutivas abertas ao mesmo tempo é convite para clicar na errada.
 type Modo = { slug: string; tipo: "renomeando" | "excluindo" | "liberando" } | null;
@@ -65,13 +72,24 @@ export const ProjectsScreen: React.FC<{
   const [err, setErr] = useState<string | null>(null);
   const [modo, setModo] = useState<Modo>(null);
   const [rascunho, setRascunho] = useState("");
-  // Slug com uma ação destrutiva em curso. É ref (não state) de propósito:
-  // dois cliques no mesmo evento (antes do repaint) veem o mesmo state até o
+  // Slugs com uma ação destrutiva em curso — um Set, não um valor único: cada
+  // linha guarda a si mesma, então a exclusão de A em voo não pode bloquear
+  // silenciosamente a exclusão de B. É ref (não só state) de propósito: dois
+  // cliques no mesmo evento (antes do repaint) veem o mesmo state até o
   // componente re-renderizar, mas a ref muda na hora — o segundo clique
   // precisa enxergar a mudança do primeiro imediatamente, não só depois do
-  // próximo render.
-  const emAndamentoRef = useRef<string | null>(null);
-  const [emAndamento, setEmAndamento] = useState<string | null>(null);
+  // próximo render. O state espelha a ref só para alimentar o `disabled`.
+  const emAndamentoRef = useRef<Set<string>>(new Set());
+  const [emAndamento, setEmAndamento] = useState<Set<string>>(new Set());
+
+  const marcarEmAndamento = (slug: string) => {
+    emAndamentoRef.current.add(slug);
+    setEmAndamento(new Set(emAndamentoRef.current));
+  };
+  const desmarcarEmAndamento = (slug: string) => {
+    emAndamentoRef.current.delete(slug);
+    setEmAndamento(new Set(emAndamentoRef.current));
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -103,10 +121,10 @@ export const ProjectsScreen: React.FC<{
   const excluir = async (j: JobSummary) => {
     // Clique duplo no "Apagar mesmo assim" antes do repaint: o diálogo some
     // só depois do estado atualizar, então o segundo clique pode chegar
-    // enquanto o botão ainda está na tela. A ref pega isso na hora.
-    if (emAndamentoRef.current) return;
-    emAndamentoRef.current = j.slug;
-    setEmAndamento(j.slug);
+    // enquanto o botão ainda está na tela. A ref pega isso na hora — mas só
+    // para ESTA linha: outra linha em voo não pode bloquear esta.
+    if (emAndamentoRef.current.has(j.slug)) return;
+    marcarEmAndamento(j.slug);
     setErr(null);
     try {
       await deleteJob(j.slug);
@@ -114,16 +132,14 @@ export const ProjectsScreen: React.FC<{
     } catch {
       setErr("não consegui apagar o projeto");
     } finally {
-      emAndamentoRef.current = null;
-      setEmAndamento(null);
+      desmarcarEmAndamento(j.slug);
       setModo(null);
     }
   };
 
   const liberar = async (j: JobSummary) => {
-    if (emAndamentoRef.current) return;
-    emAndamentoRef.current = j.slug;
-    setEmAndamento(j.slug);
+    if (emAndamentoRef.current.has(j.slug)) return;
+    marcarEmAndamento(j.slug);
     setErr(null);
     try {
       await deleteSource(j.slug);
@@ -135,8 +151,7 @@ export const ProjectsScreen: React.FC<{
     } catch {
       setErr("não consegui liberar o espaço");
     } finally {
-      emAndamentoRef.current = null;
-      setEmAndamento(null);
+      desmarcarEmAndamento(j.slug);
       setModo(null);
     }
   };
@@ -234,21 +249,21 @@ export const ProjectsScreen: React.FC<{
               <div role="alertdialog" aria-label={`confirmar exclusão de ${j.slug}`}
                    className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
                 <p className="text-red-200">
-                  Apagar <strong>{j.title || j.slug}</strong> descarta {listaNatural(itensPerdidos(j))}.
+                  Apagar <strong>{j.title || j.slug}</strong> {fraseDeExclusao(j)}.
                   {(j.has_render_16x9 || j.has_render_9x16) && " O vídeo já exportado é mantido."}
                 </p>
                 <div className="flex gap-2">
                   <button
                     aria-label={`confirmar exclusão de ${j.slug}`}
                     onClick={() => excluir(j)}
-                    disabled={emAndamento === j.slug}
+                    disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-red-900 rounded disabled:opacity-50"
                   >
                     Apagar mesmo assim
                   </button>
                   <button
                     onClick={() => setModo(null)}
-                    disabled={emAndamento === j.slug}
+                    disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
                   >
                     Desistir
@@ -271,14 +286,14 @@ export const ProjectsScreen: React.FC<{
                   <button
                     aria-label={`confirmar liberar espaço de ${j.slug}`}
                     onClick={() => liberar(j)}
-                    disabled={emAndamento === j.slug}
+                    disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-amber-800 rounded disabled:opacity-50"
                   >
                     Confirmar
                   </button>
                   <button
                     onClick={() => setModo(null)}
-                    disabled={emAndamento === j.slug}
+                    disabled={emAndamento.has(j.slug)}
                     className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
                   >
                     Desistir
