@@ -14,7 +14,7 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, cut_result, get_state, list_jobs, suggest_hook,
+    allowed_file_path, cut_result, get_state, job_summary, list_jobs, suggest_hook,
     update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_whisper_model,
 )
@@ -49,14 +49,38 @@ def read_jobs() -> list[JobSummary]:
     return list_jobs(jobs_root, output_root)
 
 
+def _tem_trabalho(resumo: JobSummary) -> bool:
+    """Se há algo a perder ao trocar o vídeo deste projeto.
+
+    O source conta: reenviar por cima dele é exatamente o caso que queremos
+    tornar explícito. Um slug que existe só com job.config.json não conta.
+    """
+    return any((
+        resumo.has_source, resumo.has_trimmed, resumo.has_transcript,
+        resumo.has_hook, resumo.has_recipe,
+    ))
+
+
 @router.post("/jobs")
 async def create_job(
-    files: list[UploadFile] = File(...), slug: str = Form(default="job")
+    files: list[UploadFile] = File(...),
+    slug: str = Form(default="job"),
+    overwrite: bool = Form(default=False),
 ):
-    jobs_root, input_root, _ = _roots()
+    jobs_root, input_root, output_root = _roots()
     input_root.mkdir(parents=True, exist_ok=True)
     if not files:
         raise HTTPException(status_code=400, detail="envie ao menos um arquivo")
+
+    # Antes de gravar qualquer byte: subir um vídeo por cima de um projeto com
+    # trabalho apaga o corte, a transcrição e os textos dele (stage_ingest). A
+    # guarda vive aqui, e não só no diálogo da tela, para que a sobrescrita
+    # silenciosa seja impossível por qualquer caminho.
+    if not overwrite:
+        existente = job_summary(Path(jobs_root) / slug, output_root)
+        if existente and _tem_trabalho(existente):
+            raise HTTPException(status_code=409, detail=existente.model_dump())
+
     paths: list[str] = []
     for i, f in enumerate(files):
         suffix = Path(f.filename or "").suffix or ".mp4"
