@@ -1,4 +1,3 @@
-import glob as glob_mod
 import re
 import shutil
 from dataclasses import asdict
@@ -101,6 +100,30 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
     )
 
 
+def _tamanho_seguro(p: Path) -> int:
+    """Tamanho de *p*, ou 0 se o arquivo sumiu entre listar e ler o stat.
+
+    job_summary_minimo é a rede de segurança que a guarda de upload usa para
+    montar o 409 de sobrescrita: ela precisa devolver um resumo mesmo quando
+    o diretório tem arquivos transitórios em disco — stage_refine cria e
+    substitui trimmed.refined.mp4 dentro do job, então um refino rodando em
+    paralelo já basta para um FileNotFoundError entre o iterdir() e o stat(),
+    sem precisar de um DELETE concorrente.
+    """
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _mtime_seguro(p: Path) -> float:
+    """Mesma proteção de `_tamanho_seguro`, para `updated_at`."""
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
     """Resumo mínimo de um job cujo job.config.json está ausente ou não pôde
     ser lido.
@@ -116,17 +139,28 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
     é o tamanho) abria dizendo "Libera 0.0 MB" mesmo com o source intacto.
     Fica de fora só o que depende de um config legível: título e orientação
     escolhida (cai no default 16:9 do model).
+
+    Esta função não pode levantar: ela é a própria rede que existia para
+    tapar o buraco de `job_summary` falhar (ver a guarda em `create_job`,
+    que trata qualquer exceção das duas como "projeto sumiu, upload pode
+    seguir sem perguntar"). Por isso cada leitura de tamanho/mtime é
+    protegida individualmente em vez de deixar um arquivo transitório
+    derrubar o resumo inteiro e desligar a guarda de sobrescrita.
     """
     if not tem_trabalho(job_dir):
         return None
-    arquivos = [p for p in job_dir.iterdir() if p.is_file()]
+    try:
+        arquivos = [p for p in job_dir.iterdir() if p.is_file()]
+    except OSError:
+        arquivos = []
     source = job_dir / "source.mp4"
+    has_source = source.exists()
     slug = job_dir.name
     renders = [output_root / f"{slug}-16x9.mp4", output_root / f"{slug}-9x16.mp4"]
     return JobSummary(
         slug=slug,
-        updated_at=max((p.stat().st_mtime for p in arquivos), default=0.0),
-        has_source=source.exists(),
+        updated_at=max((_mtime_seguro(p) for p in arquivos), default=0.0),
+        has_source=has_source,
         has_trimmed=(job_dir / "trimmed.mp4").exists(),
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
@@ -135,9 +169,9 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
         has_suggestions=(job_dir / "suggestions.json").exists(),
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
-        bytes_source=source.stat().st_size if source.exists() else 0,
-        bytes_total=sum(p.stat().st_size for p in arquivos),
-        bytes_render=sum(p.stat().st_size for p in renders if p.exists()),
+        bytes_source=_tamanho_seguro(source) if has_source else 0,
+        bytes_total=sum(_tamanho_seguro(p) for p in arquivos),
+        bytes_render=sum(_tamanho_seguro(p) for p in renders if p.exists()),
     )
 
 
@@ -208,12 +242,16 @@ def delete_job(slug: str, jobs_root: Path, input_root: Path) -> bool:
     input/. Não toca em output/ — o render exportado sobrevive de propósito.
     Devolve False se não havia o que apagar.
 
-    Levanta ArquivoEmUsoError se o rmtree (ou o unlink das partes) esbarrar
-    num arquivo aberto por outro processo — nesse caso a árvore pode ter
-    ficado parcialmente apagada, e quem chama precisa saber que não foi uma
-    operação limpa. Um FileNotFoundError no meio do rmtree não é isso: é o
-    caso de dois DELETEs concorrentes no mesmo slug, e vira o mesmo False de
-    "não havia o que apagar" (404), não um falso 409 de "arquivo em uso".
+    Levanta ArquivoEmUsoError se o rmtree esbarrar num arquivo aberto por
+    outro processo — nesse caso a árvore pode ter ficado parcialmente
+    apagada, e quem chama precisa saber que não foi uma operação limpa. Um
+    FileNotFoundError no meio do rmtree não é isso: é o caso de dois DELETEs
+    concorrentes no mesmo slug, e vira o mesmo False de "não havia o que
+    apagar" (404), não um falso 409 de "arquivo em uso".
+
+    A limpeza das partes de upload roda só depois do rmtree ter dado certo —
+    o projeto em si já foi apagado nesse ponto — e é melhor-esforço: ver
+    `_apagar_partes_de_upload`.
     """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
@@ -231,33 +269,41 @@ def delete_job(slug: str, jobs_root: Path, input_root: Path) -> bool:
 
 
 def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
-    """Apaga input/<slug>-part*.<ext> — as cópias que create_job grava de cada
-    arquivo enviado antes de concatená-las em source.mp4.
+    """Apaga input/<slug>-part<N>.<ext> — as cópias que create_job grava de
+    cada arquivo enviado (`f"{slug}-part{i}{suffix}"`) antes de concatená-las
+    em source.mp4.
 
-    Sem isto, cada projeto excluído deixava duas cópias invisíveis do vídeo
+    Sem isto, cada projeto excluído deixava cópias invisíveis do vídeo
     original em input/, numa tela cuja razão de existir é o disco não crescer
     sem limite: nem excluir nem liberar espaço nunca as apagava.
 
-    O padrão usa glob.escape no *slug* (já validado como um único segmento de
-    jobs_root por _job_dir_seguro, mas não sanitizado contra caracteres de
-    glob) para que um slug como "x[yz]" não vire uma classe de caracteres e
-    apague partes de um projeto diferente (ex.: "xy-part0.mp4").
+    Casamento exato via regex sobre `iterdir()`, não um glob com curinga: o
+    slug é texto livre digitado pelo usuário, e um padrão como
+    "{slug}-part*" apaga também "A1-parte2-part0.mp4" e "A1-part2-part1.mov"
+    ao excluir o slug "A1" — as partes de projetos vizinhos com nome
+    parecido ("parte" é palavra provável num nome em português). O `\\d+`
+    logo após "-part" e o `\\.` exigido depois dos dígitos fecham as duas
+    aberturas: nenhum arquivo fora do formato exato que create_job grava
+    casa.
+
+    Melhor-esforço: o diretório do job já foi apagado quando isto roda, então
+    uma parte travada (arquivo em uso, por exemplo) não pode virar um 409 num
+    delete que já aconteceu — e não pode abandonar as partes restantes por
+    causa de uma que falhou.
     """
     root = Path(input_root)
     if not root.is_dir():
         return
-    padrao = f"{glob_mod.escape(slug)}-part*"
-    for p in root.glob(padrao):
-        if not p.is_file():
-            continue
+    padrao = re.compile(re.escape(slug) + r"-part\d+\.[^.]+")
+    try:
+        candidatos = [p for p in root.iterdir() if p.is_file() and padrao.fullmatch(p.name)]
+    except OSError:
+        return
+    for p in candidatos:
         try:
             p.unlink()
-        except FileNotFoundError:
+        except OSError:
             continue
-        except OSError as e:
-            raise ArquivoEmUsoError(
-                "não deu para apagar: há um processo usando os arquivos deste projeto"
-            ) from e
 
 
 def delete_source(slug: str, jobs_root: Path) -> bool:

@@ -116,6 +116,40 @@ def test_guarda_conta_sugestoes_como_trabalho(client, tmp_root, sample_mp4):
     assert _upload(client, "sg", sample_mp4).status_code == 409
 
 
+def test_falha_transitoria_de_stat_no_resumo_minimo_nao_desliga_a_guarda(
+    client, tmp_root, sample_mp4, monkeypatch
+):
+    """Achado B da re-revisão: job_summary_minimo (a rede de segurança desta
+    guarda quando job_summary falha) ganhou leituras de tamanho/mtime que
+    podem estourar FileNotFoundError num arquivo transitório do job —
+    stage_refine cria e substitui trimmed.refined.mp4 dentro da pasta, então
+    um refino rodando em paralelo já basta, sem precisar de um DELETE
+    concorrente. Antes da correção isso propagava até o
+    `except Exception: existente = None` do create_job, e o upload seguia
+    sobrescrevendo transcrição e textos em silêncio."""
+    from pathlib import Path as _Path
+
+    d = tmp_root / "jobs" / "A1"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{{{", encoding="utf-8")  # ilegível -> job_summary é None
+    (d / "transcript.json").write_text("[]", encoding="utf-8")
+    (d / "trimmed.refined.mp4").write_bytes(b"y")  # o arquivo transitório
+
+    original_stat = _Path.stat
+
+    def _stat_falha_no_transitorio(self, *args, **kwargs):
+        if self.name == "trimmed.refined.mp4":
+            raise FileNotFoundError("sumiu entre listar e ler (refine concorrente)")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Path, "stat", _stat_falha_no_transitorio)
+
+    r = _upload(client, "A1", sample_mp4)
+
+    assert r.status_code == 409
+    assert (d / "transcript.json").exists()
+
+
 def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
     client, tmp_root, sample_mp4, monkeypatch
 ):

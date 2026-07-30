@@ -241,6 +241,28 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     expect(await screen.findByText(/já existe/i)).toBeInTheDocument();
   });
 
+  it("nomeia textos e sugestões a partir de has_overlays/has_suggestions, não de has_recipe (achado E)", async () => {
+    // Mesmo bug do N1 (ProjectsScreen) num segundo diálogo destrutivo:
+    // update_orientation apaga edit-recipe.json ao trocar de formato, mas
+    // overlays.json e suggestions.json sobrevivem — e "Substituir" os apaga
+    // do mesmo jeito que apaga tudo mais. has_recipe sozinho não pode ser a
+    // fonte de "textos" aqui.
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({
+        slug: "A1", has_recipe: false, has_overlays: true, has_suggestions: true,
+      } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /projeto já existe/i });
+    expect(aviso.textContent).toMatch(/textos/i);
+    expect(aviso.textContent).toMatch(/sugestões/i);
+  });
+
   it("substituir reenvia com overwrite", async () => {
     const api = await import("../api");
     (api.uploadJob as any).mockRejectedValueOnce(

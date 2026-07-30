@@ -195,7 +195,14 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
               colisao.has_trimmed && "corte",
               colisao.has_transcript && "transcrição",
               colisao.has_hook && "hook",
-              colisao.has_recipe && "textos",
+              // overlays.json e suggestions.json são arquivos independentes
+              // da recipe (mesmo raciocínio do N1 em ProjectsScreen): usar
+              // has_recipe aqui deixava de nomear "textos" quando a recipe
+              // tinha sido apagada por uma troca de orientação, mas
+              // overlays.json/suggestions.json continuavam de pé — e
+              // "Substituir" os apaga do mesmo jeito.
+              colisao.has_overlays && "textos",
+              colisao.has_suggestions && "sugestões",
             ].filter(Boolean).join(", ") || "o vídeo enviado"}
             {" "}está salvo nele.
           </p>

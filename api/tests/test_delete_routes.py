@@ -210,10 +210,13 @@ def test_delete_job_apaga_as_partes_de_upload_originais(tmp_path):
     assert alheia.exists()
 
 
-def test_delete_job_escapa_caracteres_de_glob_no_slug_ao_apagar_partes(tmp_path):
-    """Sem glob.escape, um slug com colchetes vira uma classe de caracteres no
-    padrão glob e pode casar com o prefixo de outro projeto em input/ — aqui
-    "x[yz]" sem escape casaria com "xy-part0.mp4" ou "xz-part0.mp4"."""
+def test_delete_job_escapa_caracteres_especiais_no_slug_ao_apagar_partes(tmp_path):
+    """Sem re.escape, um slug com colchetes vira uma classe de caracteres no
+    padrão e pode casar com o prefixo de outro projeto em input/ — aqui
+    "x[yz]" sem escape casaria com "xy-part0.mp4" ou "xz-part0.mp4". Cobre os
+    dois lados (achado C): a parte legítima do próprio slug precisa sumir, e
+    a de um projeto alheio precisa sobreviver — um padrão que não casasse
+    nada passaria só na asserção negativa."""
     from api.jobs import delete_job
 
     jobs_root = tmp_path / "jobs"
@@ -226,11 +229,79 @@ def test_delete_job_escapa_caracteres_de_glob_no_slug_ao_apagar_partes(tmp_path)
     projeto.mkdir()
     (projeto / "job.config.json").write_text("{}", encoding="utf-8")
 
+    propria = input_root / "x[yz]-part0.mp4"
+    propria.write_bytes(b"pertence a este projeto")
     alheia = input_root / "xy-part0.mp4"
     alheia.write_bytes(b"pertence a outro projeto")
 
     assert delete_job(slug, jobs_root, input_root) is True
-    assert alheia.exists(), "glob sem escape no slug apagou parte de outro projeto"
+    assert not propria.exists(), "a parte legítima do próprio slug devia ter sido apagada"
+    assert alheia.exists(), "regex sem escape no slug apagou parte de outro projeto"
+
+
+def test_delete_job_nao_apaga_partes_de_projeto_com_prefixo_parecido(tmp_path):
+    """Achado A: o glob antigo era "{slug}-part*", largo demais — apagar "A1"
+    casava e apagava "A1-parte2-part0.mp4" e "A1-part2-part1.mov", partes de
+    projetos vizinhos ("A1-parte2", "A1-part2"). Sem `delete_source` apagar
+    as partes, elas podem ser a última cópia em resolução cheia desses
+    projetos vizinhos — perda de dado irreversível e nunca nomeada na
+    confirmação. O casamento exato (\\d+ logo após "-part", "." antes da
+    extensão) fecha as duas aberturas."""
+    from api.jobs import delete_job
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    projeto = jobs_root / "A1"
+    projeto.mkdir()
+    (projeto / "job.config.json").write_text("{}", encoding="utf-8")
+
+    propria0 = input_root / "A1-part0.mp4"
+    propria0.write_bytes(b"parte 0 de A1")
+    propria1 = input_root / "A1-part1.mov"
+    propria1.write_bytes(b"parte 1 de A1")
+    vizinha1 = input_root / "A1-parte2-part0.mp4"
+    vizinha1.write_bytes(b"pertence ao projeto A1-parte2")
+    vizinha2 = input_root / "A1-part2-part1.mov"
+    vizinha2.write_bytes(b"pertence ao projeto A1-part2")
+
+    assert delete_job("A1", jobs_root, input_root) is True
+    assert not propria0.exists()
+    assert not propria1.exists()
+    assert vizinha1.exists(), "apagar A1 não pode levar a parte de A1-parte2 junto"
+    assert vizinha2.exists(), "apagar A1 não pode levar a parte de A1-part2 junto"
+
+
+def test_apagar_partes_e_best_effort_nao_derruba_o_delete_do_projeto(client, tmp_root, monkeypatch):
+    """Achado D: se uma parte estiver com o arquivo travado por outro
+    processo, o unlink falha — mas o diretório do projeto já foi apagado com
+    sucesso quando isso roda. Uma falha ali não pode virar 409 num delete que
+    já aconteceu, e não pode abandonar as partes restantes na primeira que
+    travar."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "d10", {"source.mp4": b"x"})
+    partes_root = tmp_root / "input"
+    (partes_root / "d10-part0.mp4").write_bytes(b"parte0")
+    (partes_root / "d10-part1.mp4").write_bytes(b"parte1")
+
+    original_unlink = jobs_mod.Path.unlink
+
+    def _unlink_trava_a_primeira(self, *args, **kwargs):
+        if self.name == "d10-part0.mp4":
+            raise PermissionError("[WinError 32] arquivo em uso por outro processo")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(jobs_mod.Path, "unlink", _unlink_trava_a_primeira)
+
+    r = client.delete("/api/jobs/d10")
+
+    assert r.status_code == 200
+    assert not (tmp_root / "jobs" / "d10").exists()
+    assert (partes_root / "d10-part0.mp4").exists(), "travada, fica órfã — mas não pode virar 409"
+    assert not (partes_root / "d10-part1.mp4").exists(), "não pode ser abandonada por causa da primeira"
 
 
 def test_delete_source_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
