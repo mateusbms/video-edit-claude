@@ -14,11 +14,11 @@ from api.claude_cli import (
     ClaudeCLIError, ClaudeCLINotFound, ClaudeCLITimeout, run_claude,
 )
 from api.jobs import (
-    allowed_file_path, cut_result, delete_job, delete_source, get_state,
-    job_summary, job_summary_minimo, list_jobs, suggest_hook, tem_trabalho,
-    update_brand_kit, update_caption_style, update_config,
-    update_hook_card_frames, update_orientation, update_title,
-    update_whisper_model,
+    allowed_file_path, ArquivoEmUsoError, cut_result, delete_job,
+    delete_source, get_state, job_summary, job_summary_minimo, list_jobs,
+    ProjetoNaoEncontradoError, suggest_hook, tem_trabalho, update_brand_kit,
+    update_caption_style, update_config, update_hook_card_frames,
+    update_orientation, update_title, update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
@@ -69,7 +69,14 @@ async def create_job(
     if not overwrite:
         job_dir = Path(jobs_root) / slug
         if tem_trabalho(job_dir):
-            existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
+            try:
+                existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir)
+            except Exception:
+                # Mesma corrida com um DELETE concorrente, mas pegando o caso em
+                # que job_summary não devolve None e sim levanta — um rmtree em
+                # andamento pode derrubar iterdir()/stat() no meio da leitura.
+                # list_jobs já se blinda do mesmo jeito (ver comentário lá).
+                existente = None
             # Corrida com um DELETE concorrente: tem_trabalho() viu True, mas os
             # arquivos sumiram antes de montar o resumo. Sem trabalho para
             # proteger, o upload segue — não há mais 409 a devolver.
@@ -105,7 +112,11 @@ def read_job(slug: str):
 def remove_job(slug: str):
     """Apaga o projeto. O render exportado em output/ é mantido."""
     jobs_root, *_ = _roots()
-    if not delete_job(slug, jobs_root):
+    try:
+        apagou = delete_job(slug, jobs_root)
+    except ArquivoEmUsoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not apagou:
         raise HTTPException(status_code=404, detail="projeto não encontrado")
     return {"ok": True}
 
@@ -114,7 +125,13 @@ def remove_job(slug: str):
 def remove_source(slug: str):
     """Apaga só o vídeo original, para liberar espaço."""
     jobs_root, *_ = _roots()
-    if not delete_source(slug, jobs_root):
+    try:
+        apagou = delete_source(slug, jobs_root)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    except ArquivoEmUsoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if not apagou:
         raise HTTPException(status_code=404, detail="este projeto não tem vídeo original")
     return {"ok": True}
 

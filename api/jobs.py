@@ -144,26 +144,61 @@ def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
     return sorted(resumos, key=lambda s: s.updated_at, reverse=True)
 
 
+class ProjetoNaoEncontradoError(Exception):
+    """O projeto (diretório) não existe."""
+
+
+class ArquivoEmUsoError(Exception):
+    """Um processo ainda tem arquivos do projeto abertos; não deu para apagar.
+
+    cut/transcribe/render rodam em thread de background (api/progress.py)
+    enquanto a API segue atendendo — no Windows o ffmpeg mantém source.mp4/
+    trimmed.mp4 abertos, e tentar apagar um arquivo aberto estoura
+    PermissionError.
+    """
+
+
 def _job_dir_seguro(slug: str, jobs_root: Path) -> Path | None:
     """Caminho do job, ou None se o slug tentar escapar de jobs_root.
 
-    Apagar é irreversível e não há lixeira: um slug com `..` ou barra não pode
-    virar um caminho fora da pasta de jobs.
+    Apagar é irreversível e não há lixeira: um slug precisa ser exatamente um
+    segmento dentro de jobs_root. Checar só contenção (algo como "root está
+    entre os parents de alvo") deixa passar aninhamento — um slug como
+    "meu-job\\audio" (a barra invertida é separador de path no Windows) resolve
+    para dentro de jobs_root/meu-job/audio, que está contido em jobs_root mas
+    não é o diretório de um projeto, e sim uma subpasta dele (onde a locução
+    da ElevenLabs é gravada). Exigir que o pai do alvo seja exatamente
+    jobs_root cobre de uma vez isso, "..", caminho absoluto e aninhamento.
     """
     root = Path(jobs_root).resolve()
-    alvo = (root / slug).resolve()
-    if alvo == root or root not in alvo.parents:
+    try:
+        alvo = (root / slug).resolve()
+    except (ValueError, OSError):
+        # slug com caractere nulo embutido (%00) faz resolve() levantar
+        # ValueError; nada é apagado, mas não pode virar 500 cru.
+        return None
+    if alvo.parent != root:
         return None
     return alvo
 
 
 def delete_job(slug: str, jobs_root: Path) -> bool:
     """Apaga o diretório do job. Não toca em output/ — o render exportado
-    sobrevive de propósito. Devolve False se não havia o que apagar."""
+    sobrevive de propósito. Devolve False se não havia o que apagar.
+
+    Levanta ArquivoEmUsoError se o rmtree esbarrar num arquivo aberto por
+    outro processo — nesse caso a árvore pode ter ficado parcialmente
+    apagada, e quem chama precisa saber que não foi uma operação limpa.
+    """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
         return False
-    shutil.rmtree(alvo)
+    try:
+        shutil.rmtree(alvo)
+    except OSError as e:
+        raise ArquivoEmUsoError(
+            "não deu para apagar: há um processo usando os arquivos deste projeto"
+        ) from e
     return True
 
 
@@ -173,14 +208,24 @@ def delete_source(slug: str, jobs_root: Path) -> bool:
     O que se perde: refazer o corte automático (stage_cut é o único leitor do
     source) e o master em resolução original. O que continua: transcrever,
     editar textos, cortes manuais e renderizar, que operam sobre o trimmed.
+
+    Levanta ProjetoNaoEncontradoError se o diretório do projeto não existir —
+    distinto de "existe mas não tem source", que devolve False. Levanta
+    ArquivoEmUsoError se o unlink esbarrar num arquivo aberto por outro
+    processo.
     """
     alvo = _job_dir_seguro(slug, jobs_root)
-    if alvo is None:
-        return False
+    if alvo is None or not alvo.is_dir():
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     source = alvo / "source.mp4"
     if not source.exists():
         return False
-    source.unlink()
+    try:
+        source.unlink()
+    except OSError as e:
+        raise ArquivoEmUsoError(
+            "não deu para apagar: há um processo usando os arquivos deste projeto"
+        ) from e
     return True
 
 

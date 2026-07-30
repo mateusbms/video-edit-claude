@@ -6,6 +6,8 @@ e o usuário costuma apagar o projeto justamente por já tê-lo exportado.
 
 import json
 
+import pytest
+
 
 def _criar_job(tmp_root, slug: str, arquivos: dict[str, bytes]) -> None:
     d = tmp_root / "jobs" / slug
@@ -67,30 +69,66 @@ def test_apos_liberar_espaco_a_lista_marca_sem_source(client, tmp_root):
     assert item["bytes_source"] == 0
 
 
+def test_apagar_o_source_preserva_o_render_exportado(client, tmp_root):
+    """Simétrico de test_apagar_o_projeto_preserva_o_render_exportado: liberar
+    espaço apagando só o source também não pode levar o render junto."""
+    _criar_job(tmp_root, "d7", {"source.mp4": b"x"})
+    render = tmp_root / "output" / "d7-9x16.mp4"
+    render.write_bytes(b"z")
+
+    client.delete("/api/jobs/d7/source")
+    assert render.exists(), "o render exportado não pode sumir junto"
+
+
 def test_liberar_espaco_sem_source_responde_404(client, tmp_root):
+    """Projeto existe, mas não tem source: 404 com mensagem específica —
+    distinta da de "projeto não encontrado" (ver teste abaixo)."""
     _criar_job(tmp_root, "d6", {"trimmed.mp4": b"y"})
-    assert client.delete("/api/jobs/d6/source").status_code == 404
+    r = client.delete("/api/jobs/d6/source")
+    assert r.status_code == 404
+    assert "vídeo original" in r.json()["detail"]
+
+
+def test_liberar_espaco_de_projeto_inexistente_diz_que_o_projeto_nao_existe(client, tmp_root):
+    """Diferente do caso acima: aqui o diretório do projeto nem existe, e a
+    mensagem não pode afirmar falsamente "este projeto não tem vídeo
+    original" — precisa dizer que o projeto não foi encontrado."""
+    r = client.delete("/api/jobs/nunca-existiu/source")
+    assert r.status_code == 404
+    assert "não encontrado" in r.json()["detail"]
+    assert "vídeo original" not in r.json()["detail"]
 
 
 def test_slug_com_travessia_de_caminho_e_recusado(client, tmp_root):
-    """`..` não pode escapar de jobs_root — apagar é irreversível.
-
-    O `%2F` decodifica para uma barra literal, então o segmento deixa de casar
-    com `{slug}` (que não aceita `/`) e a requisição cai no fallback SPA
-    (`GET /{path:path}` em api/app.py), que devolve 405 por só aceitar GET —
-    não 404. O importante, verificado abaixo, é que nada em `_job_dir_seguro`
-    chega a ser exercitado por essa rota e o diretório vizinho sobrevive
-    intacto; a proteção de fato (bloquear um slug ".." que chega até a rota)
-    é coberta por unit tests diretos de `delete_job`/`delete_source` logo
-    abaixo.
+    """`%2e%2e` decodifica para o segmento literal ".." sem introduzir barra
+    nenhuma, então casa normalmente com `{slug}` e chega até a rota — ao
+    contrário de `..%2F...` (barra codificada), que quebra o segmento e cai no
+    fallback SPA antes de alcançar o guard (ver histórico deste arquivo). Este
+    caso exercita o guard de verdade: se `_job_dir_seguro` fosse removido, a
+    resposta deixaria de ser 404.
     """
-    vitima = tmp_root / "jobs" / "vizinho"
-    vitima.mkdir(parents=True)
-    (vitima / "job.config.json").write_text("{}", encoding="utf-8")
+    r = client.delete("/api/jobs/%2e%2e")
+    assert r.status_code == 404
 
-    r = client.delete("/api/jobs/..%2Fvizinho")
-    assert r.status_code in (400, 404, 405)
-    assert vitima.exists()
+
+def test_slug_com_barra_invertida_nao_apaga_subdiretorio_do_projeto(client, tmp_root):
+    """Cenário real do achado: `\\` é separador de path no Windows, então um
+    slug "projeto\\audio" resolve para dentro de jobs_root/projeto/audio, que
+    está *contido* em jobs_root mas não é o diretório de um projeto — é a
+    subpasta onde a locução da ElevenLabs é gravada (api/animated_routes.py,
+    api/tts_routes.py). Checar só contenção deixava isso passar com 200 e
+    apagava a locução paga; o guard agora exige que o slug seja exatamente um
+    segmento dentro de jobs_root.
+    """
+    d = tmp_root / "jobs" / "projeto"
+    d.mkdir(parents=True)
+    (d / "job.config.json").write_text("{}", encoding="utf-8")
+    (d / "audio").mkdir()
+    (d / "audio" / "narracao.mp3").write_bytes(b"caro")
+
+    r = client.delete("/api/jobs/projeto%5Caudio")
+    assert r.status_code == 404
+    assert (d / "audio" / "narracao.mp3").exists()
 
 
 def test_delete_job_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
@@ -109,9 +147,29 @@ def test_delete_job_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
     assert vizinho.exists()
 
 
+def test_delete_job_recusa_barra_invertida_para_subdiretorio(tmp_path):
+    """Fixa a propriedade central do achado Important 1: um slug com "\\"
+    (separador de path no Windows) não pode apagar uma subpasta do projeto
+    como se fosse o projeto inteiro."""
+    from api.jobs import delete_job
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    projeto = jobs_root / "a"
+    projeto.mkdir()
+    sub = projeto / "b"
+    sub.mkdir()
+    (sub / "narracao.mp3").write_bytes(b"caro")
+
+    assert delete_job("a\\b", jobs_root) is False
+    assert (sub / "narracao.mp3").exists()
+
+
 def test_delete_source_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
-    """Mesma proteção para delete_source: sem escapar de jobs_root."""
-    from api.jobs import delete_source
+    """Mesma proteção para delete_source: sem escapar de jobs_root. Como o
+    alvo nem existe dentro de jobs_root, é o caso "projeto não encontrado" —
+    ProjetoNaoEncontradoError, não um False silencioso (ver Important 3)."""
+    from api.jobs import ProjetoNaoEncontradoError, delete_source
 
     jobs_root = tmp_path / "jobs"
     jobs_root.mkdir()
@@ -119,5 +177,42 @@ def test_delete_source_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
     vizinho.mkdir()
     (vizinho / "source.mp4").write_bytes(b"nao pode sumir")
 
-    assert delete_source("../vizinho-fora-de-jobs", jobs_root) is False
+    with pytest.raises(ProjetoNaoEncontradoError):
+        delete_source("../vizinho-fora-de-jobs", jobs_root)
     assert (vizinho / "source.mp4").exists()
+
+
+def test_delete_job_traduz_erro_de_arquivo_em_uso(client, tmp_root, monkeypatch):
+    """No Windows, ffmpeh rodando em background (api/progress.py) pode manter
+    source.mp4/trimmed.mp4 abertos; rmtree estoura PermissionError e a árvore
+    pode ficar parcialmente apagada. Isso não pode virar um 500 cru — a rota
+    precisa traduzir para um 409 explicando o motivo."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "trava", {"source.mp4": b"x"})
+
+    def _rmtree_falha(*args, **kwargs):
+        raise PermissionError("[WinError 32] arquivo em uso por outro processo")
+
+    monkeypatch.setattr(jobs_mod.shutil, "rmtree", _rmtree_falha)
+
+    r = client.delete("/api/jobs/trava")
+    assert r.status_code == 409
+    assert "processo" in r.json()["detail"].lower()
+
+
+def test_delete_source_traduz_erro_de_arquivo_em_uso(client, tmp_root, monkeypatch):
+    """Mesmo cuidado no unlink do source: sem destruição parcial aqui, mas o
+    500 cru é igual e precisa virar 409."""
+    import api.jobs as jobs_mod
+
+    _criar_job(tmp_root, "trava2", {"source.mp4": b"x"})
+
+    def _unlink_falha(self, *args, **kwargs):
+        raise PermissionError("[WinError 32] arquivo em uso por outro processo")
+
+    monkeypatch.setattr(jobs_mod.Path, "unlink", _unlink_falha)
+
+    r = client.delete("/api/jobs/trava2/source")
+    assert r.status_code == 409
+    assert "processo" in r.json()["detail"].lower()

@@ -106,7 +106,9 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
 ):
     """Corrida com o DELETE: tem_trabalho() viu True, mas os arquivos sumiram
     antes de montar o 409 — existente fica None e o upload precisa seguir, não
-    estourar 500 num .model_dump() de None."""
+    estourar 500 num .model_dump() de None. E o upload precisa ter acontecido
+    de verdade, não só devolvido 200 sem gravar nada (estilo
+    test_overwrite_explicito_passa)."""
     import api.routes as routes_mod
 
     _criar_job_com_trabalho(tmp_root, "A1")
@@ -116,3 +118,26 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
     r = _upload(client, "A1", sample_mp4)
 
     assert r.status_code == 200
+    assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() != b"video antigo"
+
+
+def test_projeto_apagado_entre_a_checagem_e_o_resumo_com_erro_tambem_nao_derruba_o_upload(
+    client, tmp_root, sample_mp4, monkeypatch
+):
+    """Mesma corrida, mas pegando o caso em que job_summary não devolve None e
+    sim levanta: um rmtree em andamento pode derrubar iterdir()/stat() no meio
+    da leitura (FileNotFoundError). list_jobs já se blinda assim; create_job
+    precisa do mesmo cuidado."""
+    import api.routes as routes_mod
+
+    def _levanta(*args, **kwargs):
+        raise FileNotFoundError("arquivo sumiu no meio da leitura")
+
+    _criar_job_com_trabalho(tmp_root, "A1")
+    monkeypatch.setattr(routes_mod, "job_summary", _levanta)
+    monkeypatch.setattr(routes_mod, "job_summary_minimo", _levanta)
+
+    r = _upload(client, "A1", sample_mp4)
+
+    assert r.status_code == 200
+    assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() != b"video antigo"
