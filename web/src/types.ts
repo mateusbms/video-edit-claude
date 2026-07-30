@@ -91,6 +91,8 @@ export type JobSummary = {
   has_render_9x16: boolean;
   bytes_source: number;
   bytes_total: number;
+  // renders exportados; sobrevivem a apagar o projeto
+  bytes_render: number;
 };
 
 export type SSEEvent =

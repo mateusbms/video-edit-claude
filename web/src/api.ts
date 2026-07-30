@@ -84,6 +84,21 @@ export async function putOrientation(slug: string, orientation: string): Promise
   }));
 }
 
+export async function putTitle(slug: string, title: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/title`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  }));
+}
+
+export async function deleteJob(slug: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}`, { method: "DELETE" }));
+}
+
+export async function deleteSource(slug: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/source`, { method: "DELETE" }));
+}
+
 export async function getHook(slug: string): Promise<Hook> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/hook`));
 }
