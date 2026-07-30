@@ -62,4 +62,19 @@ describe("ProjectsScreen", () => {
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     expect(await screen.findByText(/não consegui carregar/i)).toBeInTheDocument();
   });
+
+  it("projeto sem source.mp4 mostra 'sem vídeo', não 'só o vídeo'", async () => {
+    const semVideo = {
+      ...projeto,
+      slug: "A2",
+      has_source: false,
+      has_trimmed: false,
+      has_transcript: false,
+      has_render_9x16: false,
+    };
+    listJobs.mockResolvedValueOnce([semVideo]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    expect(await screen.findByText(/sem vídeo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/só o vídeo/i)).not.toBeInTheDocument();
+  });
 });

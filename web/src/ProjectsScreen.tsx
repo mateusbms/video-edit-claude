@@ -14,6 +14,7 @@ function progresso(j: JobSummary): string {
   if (j.has_hook) return "com hook";
   if (j.has_transcript) return "transcrito";
   if (j.has_trimmed) return "cortado";
+  if (!j.has_source) return "sem vídeo";
   return "só o vídeo";
 }
 
