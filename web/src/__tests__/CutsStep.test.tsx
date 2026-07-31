@@ -249,4 +249,57 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
       expect(refines.length).toBe(2);
     });
   });
+
+  // achado Important da revisão: getJob (popula aPerder) e getCuts (libera o
+  // painel de cortes manuais) correm em paralelo no mesmo useEffect. Com um
+  // corte salvo, getCuts pode responder primeiro — nesse intervalo aPerder
+  // ainda é null, e "Aplicar cortes" não pode se comportar como se não
+  // houvesse nada a perder.
+  it("com corte salvo, espera o getJob antes de liberar Aplicar cortes", async () => {
+    let resolveJob!: (v: any) => void;
+    getJob.mockReturnValueOnce(new Promise((res) => { resolveJob = res; }));
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await screen.findByText(/trechos mantidos/i);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    video.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
+    video.currentTime = 3;
+    fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+
+    // getJob ainda não respondeu: não dá para saber o que o refino apagaria
+    expect(screen.getByRole("button", { name: /aplicar cortes/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
+
+    resolveJob(comTrabalho);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /aplicar cortes/i })).not.toBeDisabled());
+
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
+  });
+
+  // achado Minor 4: erro/catch não tocam em aPerder, mas nada garantia isso
+  // contra uma regressão futura
+  it("refino que falha mantém o aviso para a próxima tentativa", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+
+    streamSSE.mockImplementationOnce(async (_url: string, _opts: any, on: any) => {
+      on.error?.({ detail: "falha simulada" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+    await screen.findByText(/falha simulada/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    expect(await screen.findByText(/transcrição/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.filter((c) => String(c[0]).includes("/refine")).length).toBe(1);
+  });
 });

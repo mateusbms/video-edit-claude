@@ -30,7 +30,12 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // O que o refino vai apagar. stage_refine remove transcrição, textos,
   // sugestões e recipe de propósito — o vídeo encurta e as legendas sairiam de
   // sincronia. Não mudamos isso; só avisamos, e só quando há o que perder.
-  const [aPerder, setAPerder] = useState<string[]>([]);
+  // `null` = ainda não sabemos (getJob não respondeu). getJob e getCuts correm
+  // em paralelo no mesmo useEffect: com um corte salvo, getCuts pode liberar o
+  // painel de cortes manuais antes de getJob terminar. Tratar `null` como
+  // "nada a perder" deixaria o refino disparar sem aviso nessa janela — por
+  // isso o botão de aplicar fica desabilitado até sair de `null`.
+  const [aPerder, setAPerder] = useState<string[] | null>(null);
   const [confirmandoRefino, setConfirmandoRefino] = useState(false);
 
   // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
@@ -58,6 +63,13 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
     return () => { vivo = false; };
   }, [slug]);
 
+  // Removendo trechos com o diálogo de confirmação aberto — por exemplo
+  // removendo todos com o "×" — o diálogo ficaria preso mostrando um aviso
+  // sobre um "aplicar" que não existe mais.
+  useEffect(() => {
+    if (removeList.length === 0) setConfirmandoRefino(false);
+  }, [removeList]);
+
   const curTime = () => videoRef.current?.currentTime ?? 0;
   const onMarkStart = () => setMarkStart(curTime());
   const onMarkEnd = () => {
@@ -71,7 +83,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
 
   const pedirParaAplicar = () => {
     if (removeList.length === 0) return;
-    if (aPerder.length > 0) { setConfirmandoRefino(true); return; }
+    // aPerder === null: getJob ainda não respondeu. O botão fica desabilitado
+    // nesse estado, mas se algum caminho futuro chamar isto mais cedo, o lado
+    // seguro é confirmar mesmo sem saber o que há a perder — nunca aplicar direto.
+    if (aPerder === null || aPerder.length > 0) { setConfirmandoRefino(true); return; }
     applyRefine();
   };
 
@@ -215,7 +230,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                       style={{ left: `${(r.start / dur) * 100}%`, width: `${((r.end - r.start) / dur) * 100}%` }} />;
                   })}
                 </div>
-                <button onClick={pedirParaAplicar} disabled={refining}
+                <button onClick={pedirParaAplicar} disabled={refining || aPerder === null}
                   className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
                   {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
                 </button>
@@ -223,18 +238,32 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                   <div role="alertdialog" aria-label="confirmar corte manual"
                        className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
                     <p className="text-amber-200">
-                      Cortar de novo encurta o vídeo, então{" "}
-                      <strong>{aPerder.join(", ")}</strong>{" "}
-                      {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
-                      legendas ficariam fora de sincronia com o vídeo novo. Você vai
-                      precisar transcrever outra vez.
+                      {aPerder === null ? (
+                        <>
+                          Não foi possível confirmar o que este projeto já tem salvo.
+                          Cortar de novo encurta o vídeo, então{" "}
+                          <strong>a transcrição, os textos e as sugestões</strong>{" "}
+                          seriam descartados, se existirem — as legendas ficariam fora
+                          de sincronia com o vídeo novo.
+                        </>
+                      ) : (
+                        <>
+                          Cortar de novo encurta o vídeo, então{" "}
+                          <strong>{aPerder.join(", ")}</strong>{" "}
+                          {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
+                          legendas ficariam fora de sincronia com o vídeo novo.
+                          {aPerder.includes("a transcrição") &&
+                            " Você vai precisar transcrever outra vez."}
+                        </>
+                      )}
                     </p>
                     <div className="flex gap-2">
-                      <button onClick={applyRefine} className="px-3 py-1 bg-amber-800 rounded">
+                      <button onClick={applyRefine} disabled={refining}
+                              className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">
                         Descartar e cortar
                       </button>
-                      <button onClick={() => setConfirmandoRefino(false)}
-                              className="px-3 py-1 bg-zinc-800 rounded">
+                      <button onClick={() => setConfirmandoRefino(false)} disabled={refining}
+                              className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">
                         Desistir
                       </button>
                     </div>
