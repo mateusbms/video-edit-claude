@@ -34,6 +34,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // sucesso). `carregandoJob`, abaixo, é quem decide se vale a pena esperar
   // por essa resposta ou se é hora de seguir sem ela.
   const [aPerder, setAPerder] = useState<string[] | null>(null);
+  // Duplicata de `has_transcript`, guardada à parte da string de exibição:
+  // `aPerder.includes("a transcrição")` usava o texto que aparece na tela como
+  // chave de estado — reescrever a frase (achado Minor da revisão) faria o
+  // aviso extra sobre re-transcrever sumir em silêncio.
+  const [perdeTranscricao, setPerdeTranscricao] = useState(false);
   // `null` em `aPerder` tem dois motivos possíveis: "a resposta ainda não
   // chegou" (vale esperar) ou "o getJob falhou e não vai vir mais" (esperar
   // seria travar o botão para sempre). getJob e getCuts correm em paralelo no
@@ -54,6 +59,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (!vivo) return;
       if (j?.config) setParams(j.config);
       setTemSource(j?.has_source !== false);
+      setPerdeTranscricao(!!j?.has_transcript);
       setAPerder([
         j?.has_transcript && "a transcrição",
         j?.has_overlays && "os textos",
@@ -120,6 +126,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
           if (d.trimmed_mtime != null) setTrimmedVersion(d.trimmed_mtime);
           // o refino apagou tudo isso; avisar de novo no próximo corte seria mentira
           setAPerder([]);
+          setPerdeTranscricao(false);
         },
         error: (d) => setErr(d.detail ?? "erro ao aplicar cortes"),
       });
@@ -175,9 +182,22 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       </button>
       {!temSource && (
         <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
-          O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
-          então não dá mais para detectar pausas aqui. Os cortes manuais sobre o vídeo
-          já cortado continuam funcionando.
+          {result ? (
+            <>
+              O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
+              então não dá mais para detectar pausas aqui. Os cortes manuais sobre o vídeo
+              já cortado continuam funcionando.
+            </>
+          ) : (
+            // Sem source e sem corte salvo não há vídeo nenhum neste projeto —
+            // prometer "os cortes manuais continuam funcionando" seria mentira:
+            // não existe trimmed.mp4 para cortar manualmente.
+            <>
+              O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
+              e este projeto não tem nenhum corte salvo — não dá para detectar pausas
+              nem cortar manualmente aqui: não sobrou vídeo para trabalhar.
+            </>
+          )}
         </p>
       )}
       {busy && prog && <ProgressBar label="Corte" n={Math.round(prog.n)} total={Math.round(prog.total)} />}
@@ -256,7 +276,8 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                         <>
                           Não foi possível confirmar o que este projeto já tem salvo.
                           Cortar de novo encurta o vídeo, então{" "}
-                          <strong>a transcrição, os textos e as sugestões</strong>{" "}
+                          <strong>a transcrição, os textos, as sugestões e a receita de
+                          render</strong>{" "}
                           seriam descartados, se existirem — as legendas ficariam fora
                           de sincronia com o vídeo novo.
                         </>
@@ -266,7 +287,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                           <strong>{aPerder.join(", ")}</strong>{" "}
                           {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
                           legendas ficariam fora de sincronia com o vídeo novo.
-                          {aPerder.includes("a transcrição") &&
+                          {perdeTranscricao &&
                             " Você vai precisar transcrever outra vez."}
                         </>
                       )}

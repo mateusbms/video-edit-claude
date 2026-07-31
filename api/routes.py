@@ -166,13 +166,19 @@ def run_cut(slug: str, params: CutParams):
     # stage_cut é o único leitor do source.mp4. Sem ele o ffmpeg estoura no meio
     # do stream SSE, com erro ilegível — e o projeto pode legitimamente não ter
     # mais o original, depois do "Liberar espaço". Recusa antes de gravar nada.
-    if not get_state(slug, jobs_root).has_source:
-        raise HTTPException(
-            status_code=409,
-            detail=("o vídeo original deste projeto foi apagado para liberar espaço; "
-                    "a detecção de pausas não é mais possível aqui — resta o corte manual "
-                    "sobre o vídeo já cortado"),
-        )
+    state = get_state(slug, jobs_root)
+    if not state.has_source:
+        if state.has_trimmed:
+            detail = ("o vídeo original deste projeto foi apagado para liberar espaço; "
+                       "a detecção de pausas não é mais possível aqui — resta o corte manual "
+                       "sobre o vídeo já cortado")
+        else:
+            # sem source e sem trimmed.mp4: não existe corte manual a prometer —
+            # não sobrou vídeo nenhum para trabalhar neste projeto.
+            detail = ("o vídeo original deste projeto foi apagado para liberar espaço, e "
+                      "este projeto não tem nenhum corte salvo — não dá para detectar "
+                      "pausas nem cortar manualmente aqui: não sobrou vídeo para trabalhar")
+        raise HTTPException(status_code=409, detail=detail)
     update_config(slug, jobs_root, params)
     job = init_job(jobs_root, slug)
 

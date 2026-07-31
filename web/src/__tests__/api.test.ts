@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseSSEChunk, getOverlays, putOverlays, generateSuggestions } from "../api";
+import { parseSSEChunk, getOverlays, putOverlays, generateSuggestions, streamSSE } from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -39,6 +39,27 @@ describe("overlays api", () => {
     expect(put.url).toBe("/api/jobs/s1/overlays");
     expect(JSON.parse(put.init.body)[0].id).toBe("ov_a");
     expect(got[0].id).toBe("ov_a");
+  });
+});
+
+describe("streamSSE", () => {
+  // achado Important da revisão final: um 409 escrito com cuidado pelo backend
+  // (ex.: "vídeo original apagado, resta o corte manual") chegava na tela como
+  // "SSE falhou (409)" — o corpo da resposta nunca era lido.
+  it("num erro HTTP, rejeita com o `detail` do corpo JSON, não com 'SSE falhou'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => (
+      { ok: false, status: 409, json: async () => ({ detail: "mensagem específica" }) } as any
+    )));
+    await expect(streamSSE("/api/jobs/s1/cut", {}, {})).rejects.toThrow("mensagem específica");
+    vi.unstubAllGlobals();
+  });
+
+  it("sem corpo JSON utilizável, cai na mensagem de status", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => (
+      { ok: false, status: 500, json: async () => { throw new Error("não é JSON"); } } as any
+    )));
+    await expect(streamSSE("/api/jobs/s1/cut", {}, {})).rejects.toThrow("SSE falhou (500)");
+    vi.unstubAllGlobals();
   });
 });
 

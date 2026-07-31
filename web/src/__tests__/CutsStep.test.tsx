@@ -156,6 +156,32 @@ describe("CutsStep — projeto sem o vídeo original", () => {
     expect(screen.queryByText(/liberar espaço/i)).not.toBeInTheDocument();
   });
 
+  // achado Important da revisão final: espelho do teste equivalente de
+  // `aPerder` — `j?.has_source !== false` é otimista de propósito (tem
+  // source, ou não sabemos). Uma falha de rede não pode desabilitar o botão
+  // nem estampar a explicação de "liberado para liberar espaço", que seria
+  // falsa aqui.
+  it("com getJob rejeitando, Detectar pausas continua habilitado e sem o aviso", async () => {
+    getJob.mockRejectedValueOnce(new Error("falha de rede"));
+    render(<CutsStep {...props} />);
+    await waitFor(() => expect(getJob).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled();
+    expect(screen.queryByText(/liberar espaço/i)).not.toBeInTheDocument();
+  });
+
+  // achado Important da revisão final: sem source e sem corte salvo não há
+  // trimmed.mp4 nenhum — a mensagem antiga prometia "os cortes manuais
+  // continuam funcionando", o que é falso quando não existe vídeo cortado.
+  it("sem source e sem corte salvo, a mensagem não promete cortes manuais", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false,
+    } as any);
+    render(<CutsStep {...props} />);
+    await waitFor(() => expect(screen.getByText(/liberar espaço/i)).toBeInTheDocument());
+    expect(screen.queryByText(/cortes manuais.*continuam/i)).not.toBeInTheDocument();
+  });
+
   it("os cortes manuais continuam disponíveis sem o original", async () => {
     getJob.mockResolvedValueOnce({
       config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
@@ -230,6 +256,34 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
 
     await waitFor(() =>
       expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(true));
+  });
+
+  // achado Minor da revisão final: a frase extra sobre re-transcrever era
+  // decidida por `aPerder.includes("a transcrição")` — uma busca na string de
+  // exibição. Fixamos num booleano derivado direto de `has_transcript`
+  // (`perdeTranscricao`); estes dois testes travam o comportamento dos dois
+  // lados.
+  it("com has_transcript, avisa que será preciso transcrever de novo", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+
+    expect(await screen.findByText(/transcrever outra vez/i)).toBeInTheDocument();
+  });
+
+  it("sem has_transcript, não avisa sobre transcrever de novo mesmo com outra coisa a perder", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: true, has_transcript: false, has_overlays: true,
+      has_suggestions: false, has_recipe: false,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+
+    expect(await screen.findByText(/os textos/i)).toBeInTheDocument();
+    expect(screen.queryByText(/transcrever outra vez/i)).not.toBeInTheDocument();
   });
 
   it("o segundo corte da mesma sessão não avisa de novo", async () => {
@@ -311,6 +365,10 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
     expect(await screen.findByText(/não foi possível confirmar/i)).toBeInTheDocument();
+    // achado Minor da revisão final: o ramo de estado desconhecido listava só
+    // "a transcrição, os textos e as sugestões" — a receita de render também
+    // é apagada pelo refino e ficava de fora, ao contrário do ramo conhecido.
+    expect(screen.getByText(/receita de render/i)).toBeInTheDocument();
     expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
   });
 

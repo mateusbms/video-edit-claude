@@ -190,7 +190,18 @@ export async function streamSSE(
   on: { progress?: (d: any) => void; done?: (d: any) => void; error?: (d: any) => void },
 ): Promise<void> {
   const r = await fetch(url, opts);
-  if (!r.ok || !r.body) throw new Error(`SSE falhou (${r.status})`);
+  if (!r.ok) {
+    // O corpo do erro (ex.: o 409 de "sem vídeo original") é JSON com
+    // `detail`, igual ao resto da API — sem ler, a tela mostra só o status
+    // HTTP, e a mensagem cuidadosa que o backend escreveu nunca chega.
+    let detail = `SSE falhou (${r.status})`;
+    try {
+      const body = await r.json();
+      if (body?.detail) detail = body.detail;
+    } catch { /* corpo não é JSON utilizável: mantém a mensagem de status */ }
+    throw new Error(detail);
+  }
+  if (!r.body) throw new Error(`SSE falhou (${r.status})`);
   const reader = r.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

@@ -32,6 +32,17 @@ def test_a_mensagem_explica_o_que_aconteceu_e_o_que_sobra(client, tmp_root):
     assert "manual" in detalhe.lower()
 
 
+def test_sem_source_e_sem_trimmed_nao_promete_corte_manual(client, tmp_root):
+    """Sem source.mp4 nem trimmed.mp4 não existe nenhum vídeo para trabalhar
+    neste projeto — "resta o corte manual" seria uma promessa vazia. A frase
+    pode negar o corte manual (dizer que não dá para fazer), só não pode
+    oferecê-lo como o que sobra."""
+    _criar_job(tmp_root, "s6", {})
+    detalhe = client.post("/api/jobs/s6/cut", json=CORTE).json()["detail"]
+    assert "resta" not in detalhe.lower()
+    assert "corte manual" not in detalhe.lower()
+
+
 def test_recusar_nao_grava_os_parametros(client, tmp_root):
     """Não persiste a escolha de um corte que não vai acontecer."""
     _criar_job(tmp_root, "s3", {"trimmed.mp4": b"y"})
