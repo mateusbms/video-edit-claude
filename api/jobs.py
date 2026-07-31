@@ -373,6 +373,9 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
+        has_source=(job_dir / "source.mp4").exists(),
+        has_overlays=(job_dir / "overlays.json").exists(),
+        has_suggestions=(job_dir / "suggestions.json").exists(),
         has_render_16x9=False,  # preenchido pelo caller com OUTPUT_ROOT
         has_render_9x16=False,
     )

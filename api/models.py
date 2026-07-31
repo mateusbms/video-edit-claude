@@ -155,6 +155,10 @@ class JobState(BaseModel):
     has_transcript: bool = False
     has_hook: bool = False
     has_recipe: bool = False
+    has_source: bool = False
+    # o refino apaga estes dois junto com a transcrição; a tela avisa antes
+    has_overlays: bool = False
+    has_suggestions: bool = False
     has_render_16x9: bool = False
     has_render_9x16: bool = False
     captionStyle: dict | None = None  # cru, como está no job.config (=> "" segue a marca)

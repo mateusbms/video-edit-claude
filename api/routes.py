@@ -163,6 +163,16 @@ def put_title(slug: str, params: TitleParams):
 @router.post("/jobs/{slug}/cut")
 def run_cut(slug: str, params: CutParams):
     jobs_root, *_ = _roots()
+    # stage_cut é o único leitor do source.mp4. Sem ele o ffmpeg estoura no meio
+    # do stream SSE, com erro ilegível — e o projeto pode legitimamente não ter
+    # mais o original, depois do "Liberar espaço". Recusa antes de gravar nada.
+    if not get_state(slug, jobs_root).has_source:
+        raise HTTPException(
+            status_code=409,
+            detail=("o vídeo original deste projeto foi apagado para liberar espaço; "
+                    "a detecção de pausas não é mais possível aqui — resta o corte manual "
+                    "sobre o vídeo já cortado"),
+        )
     update_config(slug, jobs_root, params)
     job = init_job(jobs_root, slug)
 
