@@ -27,6 +27,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // único leitor dele. Oferecer o botão só para o servidor recusar com 409
   // seria empurrar o usuário para um beco.
   const [temSource, setTemSource] = useState(true);
+  // O que o refino vai apagar. stage_refine remove transcrição, textos,
+  // sugestões e recipe de propósito — o vídeo encurta e as legendas sairiam de
+  // sincronia. Não mudamos isso; só avisamos, e só quando há o que perder.
+  const [aPerder, setAPerder] = useState<string[]>([]);
+  const [confirmandoRefino, setConfirmandoRefino] = useState(false);
 
   // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
   // sair para a Transcrição e voltar destrói este componente. Sem reler o
@@ -38,6 +43,12 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (!vivo) return;
       if (j?.config) setParams(j.config);
       setTemSource(j?.has_source !== false);
+      setAPerder([
+        j?.has_transcript && "a transcrição",
+        j?.has_overlays && "os textos",
+        j?.has_suggestions && "as sugestões",
+        j?.has_recipe && "a receita de render",
+      ].filter(Boolean) as string[]);
     }).catch(() => {});
     getCuts(slug).then((r) => {
       if (!vivo || !r) return;
@@ -58,8 +69,15 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
   const removeRange = (i: number) => setRemoveList((l) => l.filter((_, k) => k !== i));
 
+  const pedirParaAplicar = () => {
+    if (removeList.length === 0) return;
+    if (aPerder.length > 0) { setConfirmandoRefino(true); return; }
+    applyRefine();
+  };
+
   const applyRefine = async () => {
     if (removeList.length === 0) return;
+    setConfirmandoRefino(false);
     setRefining(true); setErr(null); setRefineProg(null);
     try {
       await streamSSE(`/api/jobs/${slug}/refine`, {
@@ -71,6 +89,8 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
           setResult((r) => (r && d.trimmed_duration != null ? { ...r, trimmed_duration: d.trimmed_duration } : r));
           setRemoveList([]);
           if (d.trimmed_mtime != null) setTrimmedVersion(d.trimmed_mtime);
+          // o refino apagou tudo isso; avisar de novo no próximo corte seria mentira
+          setAPerder([]);
         },
         error: (d) => setErr(d.detail ?? "erro ao aplicar cortes"),
       });
@@ -195,10 +215,31 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                       style={{ left: `${(r.start / dur) * 100}%`, width: `${((r.end - r.start) / dur) * 100}%` }} />;
                   })}
                 </div>
-                <button onClick={applyRefine} disabled={refining}
+                <button onClick={pedirParaAplicar} disabled={refining}
                   className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
                   {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
                 </button>
+                {confirmandoRefino && (
+                  <div role="alertdialog" aria-label="confirmar corte manual"
+                       className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
+                    <p className="text-amber-200">
+                      Cortar de novo encurta o vídeo, então{" "}
+                      <strong>{aPerder.join(", ")}</strong>{" "}
+                      {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
+                      legendas ficariam fora de sincronia com o vídeo novo. Você vai
+                      precisar transcrever outra vez.
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={applyRefine} className="px-3 py-1 bg-amber-800 rounded">
+                        Descartar e cortar
+                      </button>
+                      <button onClick={() => setConfirmandoRefino(false)}
+                              className="px-3 py-1 bg-zinc-800 rounded">
+                        Desistir
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {refining && refineProg && <ProgressBar label="Aplicando cortes" n={Math.round(refineProg.n)} total={Math.round(refineProg.total)} />}
               </>
             )}

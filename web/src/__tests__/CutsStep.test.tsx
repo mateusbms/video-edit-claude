@@ -169,3 +169,84 @@ describe("CutsStep — projeto sem o vídeo original", () => {
     expect(await screen.findByRole("button", { name: /marcar início/i })).toBeInTheDocument();
   });
 });
+
+describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
+  const comTrabalho = {
+    config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+    has_source: true, has_transcript: true, has_overlays: true,
+    has_suggestions: false, has_recipe: true,
+  };
+
+  async function marcarUmTrecho(container: HTMLElement) {
+    const video = await doCut(container);
+    video.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
+    video.currentTime = 3;
+    fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+  }
+
+  it("pergunta antes de aplicar, listando o que será descartado", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+
+    expect(await screen.findByText(/transcrição/i)).toBeInTheDocument();
+    expect(screen.getByText(/textos/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
+  });
+
+  it("confirmar aplica de verdade", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+
+    await waitFor(() =>
+      expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(true));
+  });
+
+  it("desistir não aplica nada e mantém os trechos marcados", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /desistir/i }));
+
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
+    expect(screen.getByRole("button", { name: /remover trecho 1/i })).toBeInTheDocument();
+  });
+
+  it("sem nada a perder, aplica direto e não pergunta", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: true, has_transcript: false, has_overlays: false,
+      has_suggestions: false, has_recipe: false,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+
+    await waitFor(() =>
+      expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(true));
+  });
+
+  it("o segundo corte da mesma sessão não avisa de novo", async () => {
+    // o refino já apagou tudo; avisar outra vez seria mentira
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    const { container } = render(<CutsStep {...props} />);
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+    await waitFor(() =>
+      expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(true));
+
+    await marcarUmTrecho(container);
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    await waitFor(() => {
+      const refines = streamSSE.mock.calls.filter((c) => String(c[0]).includes("/refine"));
+      expect(refines.length).toBe(2);
+    });
+  });
+});
