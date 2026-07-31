@@ -18,6 +18,7 @@ vi.mock("remotion", () => {
     AbsoluteFill: ({ children, style }: any) => <div style={style}>{children}</div>,
     Audio: () => null,
     Img: (props: any) => <img {...props} alt="" />,
+    staticFile: (path: string) => path,
     Series,
   };
 });
