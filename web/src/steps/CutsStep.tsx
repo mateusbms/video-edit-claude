@@ -23,6 +23,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [trimmedVersion, setTrimmedVersion] = useState(0);
   const [refining, setRefining] = useState(false);
   const [refineProg, setRefineProg] = useState<{ n: number; total: number } | null>(null);
+  // Sem o source, o "Detectar pausas" não pode acontecer — o stage_cut é o
+  // único leitor dele. Oferecer o botão só para o servidor recusar com 409
+  // seria empurrar o usuário para um beco.
+  const [temSource, setTemSource] = useState(true);
 
   // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
   // sair para a Transcrição e voltar destrói este componente. Sem reler o
@@ -30,7 +34,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // valores padrão, mesmo com cuts.json em disco.
   useEffect(() => {
     let vivo = true;
-    getJob(slug).then((j) => { if (vivo && j?.config) setParams(j.config); }).catch(() => {});
+    getJob(slug).then((j) => {
+      if (!vivo) return;
+      if (j?.config) setParams(j.config);
+      setTemSource(j?.has_source !== false);
+    }).catch(() => {});
     getCuts(slug).then((r) => {
       if (!vivo || !r) return;
       setResult(r);
@@ -112,10 +120,17 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <Slider label="Silêncio mínimo (s)" value={params.min_silence}
         min={0.2} max={2.0} step={0.1} format={(n) => `${n.toFixed(1)} s`}
         onChange={(n) => setParams({ ...params, min_silence: n })} />
-      <button onClick={onCut} disabled={busy}
+      <button onClick={onCut} disabled={busy || !temSource}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
         {busy ? "Cortando..." : "Detectar pausas"}
       </button>
+      {!temSource && (
+        <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
+          O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
+          então não dá mais para detectar pausas aqui. Os cortes manuais sobre o vídeo
+          já cortado continuam funcionando.
+        </p>
+      )}
       {busy && prog && <ProgressBar label="Corte" n={Math.round(prog.n)} total={Math.round(prog.total)} />}
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {result && (

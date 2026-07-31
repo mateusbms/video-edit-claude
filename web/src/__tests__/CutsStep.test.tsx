@@ -132,3 +132,40 @@ describe("CutsStep manual cut", () => {
     });
   });
 });
+
+describe("CutsStep — projeto sem o vídeo original", () => {
+  it("desabilita Detectar pausas e explica por quê", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false,
+    } as any);
+    render(<CutsStep {...props} />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /detectar pausas/i })).toBeDisabled());
+    expect(screen.getByText(/liberar espaço/i)).toBeInTheDocument();
+  });
+
+  it("com o vídeo original, o botão continua ativo e sem aviso", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: true,
+    } as any);
+    render(<CutsStep {...props} />);
+    await waitFor(() => expect(getJob).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled();
+    expect(screen.queryByText(/liberar espaço/i)).not.toBeInTheDocument();
+  });
+
+  it("os cortes manuais continuam disponíveis sem o original", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false,
+    } as any);
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    render(<CutsStep {...props} />);
+    expect(await screen.findByRole("button", { name: /marcar início/i })).toBeInTheDocument();
+  });
+});

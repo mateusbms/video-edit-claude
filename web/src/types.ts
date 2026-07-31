@@ -68,6 +68,9 @@ export type JobState = {
   has_recipe: boolean;
   has_render_16x9: boolean;
   has_render_9x16: boolean;
+  has_source?: boolean;
+  has_overlays?: boolean;
+  has_suggestions?: boolean;
   orientation: "16x9" | "9x16";
   // cru (do job.config; "" = segue a marca) e resolvido (com o brand kit
   // aplicado, que é o que o render vai usar)
