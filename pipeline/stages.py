@@ -17,6 +17,14 @@ DERIVADOS_DO_SOURCE = (
     "edit-recipe.json", "render.log",
 )
 
+# Tudo que foi derivado do trimmed.mp4: reescrevê-lo deixa esses arquivos
+# apontando para a timeline antiga — legendas fora de sincronia no render.
+# hook.json fica de fora de propósito: o texto do hook não é sincronizado
+# com a timeline.
+DERIVADOS_DO_TRIMMED = (
+    "transcript.json", "edit-recipe.json", "overlays.json", "suggestions.json",
+)
+
 
 def stage_ingest(job: Job, src_paths: list[str]) -> None:
     dest = job.dir / "source.mp4"
@@ -48,6 +56,11 @@ def stage_cut(job: Job, progress_cb=None) -> None:
     write_json(job.dir / "trimmed.probe.json",
                {"width": tmeta.width, "height": tmeta.height, "fps": tmeta.fps,
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
+    # o trimmed mudou: mesma invalidação do stage_refine — sem ela, re-detectar
+    # pausas num projeto transcrito deixava as legendas da timeline antiga
+    # entrarem no render, fora de sincronia e sem aviso.
+    for stale in DERIVADOS_DO_TRIMMED:
+        (job.dir / stale).unlink(missing_ok=True)
 
 
 def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
@@ -68,7 +81,7 @@ def stage_refine(job: Job, remove_ranges: list, progress_cb=None) -> float:
                 "duration": tmeta.duration, "nb_frames": tmeta.nb_frames})
     # o trimmed mudou: invalida artefatos derivados para não renderizar legendas
     # dessincronizadas se o usuário refinar depois de transcrever.
-    for stale in ("transcript.json", "edit-recipe.json", "overlays.json", "suggestions.json"):
+    for stale in DERIVADOS_DO_TRIMMED:
         (job.dir / stale).unlink(missing_ok=True)
     return tmeta.duration
 

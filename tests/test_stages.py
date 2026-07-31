@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 import pytest
 from pipeline.job import init_job, write_json, load_json
-from pipeline.stages import stage_recipe, stage_ingest
+from pipeline.stages import stage_recipe, stage_ingest, stage_cut
 
 _REPO_BIN = Path(__file__).resolve().parents[1] / "bin"
 os.environ["PATH"] = f"{_REPO_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
@@ -170,3 +170,57 @@ def test_stage_refine_deletes_suggestions_keeps_suggest_defaults(tmp_path):
     stage_refine(job, [Segment(0.5, 1.0)])
     assert not (job.dir / "suggestions.json").exists()
     assert (job.dir / "suggest-defaults.json").exists()
+
+
+def _cut_falso(monkeypatch, job):
+    """stage_cut sem ffmpeg: sem silêncios (mantém o vídeo inteiro), corte e
+    probe mockados. Segue o padrão do _ingest_falso."""
+    from pipeline import stages
+
+    class _Meta:
+        width, height, fps, duration, nb_frames = 1080, 1920, 30.0, 8.0, 240
+
+    def fake_cut(_src, _kept, dest, total_duration=None, progress_cb=None, scale=None):
+        Path(dest).write_bytes(b"trimmed novo")
+
+    monkeypatch.setattr(stages, "detect_silences", lambda *_a, **_k: [])
+    monkeypatch.setattr(stages, "cut_segments", fake_cut)
+    monkeypatch.setattr(stages, "probe_video", lambda _p: _Meta())
+    stage_cut(job)
+
+
+def test_stage_cut_apaga_os_derivados_do_trimmed(tmp_path, monkeypatch):
+    """Re-detectar pausas reescreve o trimmed.mp4. Transcrição, textos,
+    sugestões e receita descrevem a timeline antiga — sem invalidá-los, o
+    render sai com legendas fora de sincronia, em silêncio. Mesma invalidação
+    que o stage_refine já faz."""
+    job = init_job(tmp_path / "jobs", "c4")
+    (job.dir / "source.mp4").write_bytes(b"source")
+    write_json(job.dir / "probe.json",
+               {"width": 1080, "height": 1920, "fps": 30.0, "duration": 8.0})
+    for nome in ("transcript.json", "edit-recipe.json", "overlays.json", "suggestions.json"):
+        write_json(job.dir / nome, {"da": "timeline antiga"})
+    write_json(job.dir / "hook.json", {"title": "H", "subtitle": ""})
+    write_json(job.dir / "suggest-defaults.json", {"x": 0.5})
+
+    _cut_falso(monkeypatch, job)
+
+    for nome in ("transcript.json", "edit-recipe.json", "overlays.json", "suggestions.json"):
+        assert not (job.dir / nome).exists(), f"{nome} sobreviveu ao corte novo"
+    # hook e preferências não descrevem a timeline — sobrevivem (como no refino)
+    assert (job.dir / "hook.json").exists()
+    assert (job.dir / "suggest-defaults.json").exists()
+    # e o corte em si foi escrito
+    assert (job.dir / "cuts.json").exists()
+    assert (job.dir / "trimmed.mp4").exists()
+    assert (job.dir / "trimmed.probe.json").exists()
+
+
+def test_stage_cut_sem_derivados_nao_falha(tmp_path, monkeypatch):
+    """Primeiro corte de um projeto: não há nada para invalidar."""
+    job = init_job(tmp_path / "jobs", "c5")
+    (job.dir / "source.mp4").write_bytes(b"source")
+    write_json(job.dir / "probe.json",
+               {"width": 1080, "height": 1920, "fps": 30.0, "duration": 8.0})
+    _cut_falso(monkeypatch, job)
+    assert (job.dir / "trimmed.mp4").exists()
