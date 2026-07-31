@@ -30,12 +30,18 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // O que o refino vai apagar. stage_refine remove transcrição, textos,
   // sugestões e recipe de propósito — o vídeo encurta e as legendas sairiam de
   // sincronia. Não mudamos isso; só avisamos, e só quando há o que perder.
-  // `null` = ainda não sabemos (getJob não respondeu). getJob e getCuts correm
-  // em paralelo no mesmo useEffect: com um corte salvo, getCuts pode liberar o
-  // painel de cortes manuais antes de getJob terminar. Tratar `null` como
-  // "nada a perder" deixaria o refino disparar sem aviso nessa janela — por
-  // isso o botão de aplicar fica desabilitado até sair de `null`.
+  // `null` = não sabemos o que este projeto tem (getJob nunca respondeu com
+  // sucesso). `carregandoJob`, abaixo, é quem decide se vale a pena esperar
+  // por essa resposta ou se é hora de seguir sem ela.
   const [aPerder, setAPerder] = useState<string[] | null>(null);
+  // `null` em `aPerder` tem dois motivos possíveis: "a resposta ainda não
+  // chegou" (vale esperar) ou "o getJob falhou e não vai vir mais" (esperar
+  // seria travar o botão para sempre). getJob e getCuts correm em paralelo no
+  // mesmo useEffect: com um corte salvo, getCuts pode liberar o painel de
+  // cortes manuais antes de getJob terminar — por isso o botão de aplicar
+  // fica desabilitado só enquanto `carregandoJob`, nunca por `aPerder`
+  // sozinho.
+  const [carregandoJob, setCarregandoJob] = useState(true);
   const [confirmandoRefino, setConfirmandoRefino] = useState(false);
 
   // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
@@ -54,7 +60,14 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         j?.has_suggestions && "as sugestões",
         j?.has_recipe && "a receita de render",
       ].filter(Boolean) as string[]);
-    }).catch(() => {});
+    }).catch(() => {
+      // getJob falhou: aPerder fica null (não sabemos o que este projeto tem)
+      // e não vai mudar sozinho — travar o botão esperando por uma resposta
+      // que não vem seria pior do que aplicar sem saber. carregandoJob, logo
+      // abaixo, libera o botão de qualquer forma.
+    }).finally(() => {
+      if (vivo) setCarregandoJob(false);
+    });
     getCuts(slug).then((r) => {
       if (!vivo || !r) return;
       setResult(r);
@@ -83,9 +96,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
 
   const pedirParaAplicar = () => {
     if (removeList.length === 0) return;
-    // aPerder === null: getJob ainda não respondeu. O botão fica desabilitado
-    // nesse estado, mas se algum caminho futuro chamar isto mais cedo, o lado
-    // seguro é confirmar mesmo sem saber o que há a perder — nunca aplicar direto.
+    // aPerder === null: getJob nunca respondeu com sucesso (falhou, ou o
+    // botão foi habilitado antes da hora por algum caminho futuro). O lado
+    // seguro é confirmar mesmo sem saber o que há a perder — nunca aplicar
+    // direto quando não sabemos.
     if (aPerder === null || aPerder.length > 0) { setConfirmandoRefino(true); return; }
     applyRefine();
   };
@@ -230,7 +244,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                       style={{ left: `${(r.start / dur) * 100}%`, width: `${((r.end - r.start) / dur) * 100}%` }} />;
                   })}
                 </div>
-                <button onClick={pedirParaAplicar} disabled={refining || aPerder === null}
+                <button onClick={pedirParaAplicar} disabled={refining || carregandoJob}
                   className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
                   {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
                 </button>

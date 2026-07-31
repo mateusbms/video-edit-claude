@@ -284,6 +284,36 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
     expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
   });
 
+  // achado Important (2ª rodada): a correção da corrida trocou "aplica sem
+  // avisar" por "trava sem explicar" — um getJob que falha deixava aPerder em
+  // null para sempre, e o botão ficava desabilitado esperando uma resposta
+  // que não vem mais. `carregandoJob` separa "ainda esperando" de "não
+  // consegui saber": no segundo caso o botão libera e pedirParaAplicar cai no
+  // caminho defensivo (confirma mesmo sem saber o que há a perder).
+  it("com getJob rejeitando, libera Aplicar cortes e confirma sem saber o que há a perder", async () => {
+    getJob.mockRejectedValueOnce(new Error("falha de rede"));
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await screen.findByText(/trechos mantidos/i);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    video.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
+    video.currentTime = 3;
+    fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+
+    // getJob nunca vai responder de novo: esperar por ele travaria o botão
+    // para sempre, então libera assim que a rejeição chega
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /aplicar cortes/i })).not.toBeDisabled());
+
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+    expect(await screen.findByText(/não foi possível confirmar/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/refine"))).toBe(false);
+  });
+
   // achado Minor 4: erro/catch não tocam em aPerder, mas nada garantia isso
   // contra uma regressão futura
   it("refino que falha mantém o aviso para a próxima tentativa", async () => {
