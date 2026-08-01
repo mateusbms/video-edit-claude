@@ -110,12 +110,24 @@ const ConfirmarLiberar: React.FC<{
     <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`confirmar liberar espaço de ${job.slug}`}
          className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
       <p className="text-amber-200">
-        Libera <strong>{tamanho(job.bytes_source + job.bytes_parts)}</strong> apagando o
-        vídeo original{job.bytes_parts > 0 && " e as cópias do upload"}.
-        Você continua podendo transcrever, fazer cortes manuais, editar textos,
-        legendas e renderizar — mas
-        <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a
-        resolução original se perde.
+        {job.has_source ? (
+          <>
+            Libera <strong>{tamanho(job.bytes_source + job.bytes_parts)}</strong> apagando o
+            vídeo original{job.bytes_parts > 0 && " e as cópias do upload"}.
+            Você continua podendo transcrever, fazer cortes manuais, editar textos,
+            legendas e renderizar — mas
+            <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a
+            resolução original se perde.
+          </>
+        ) : (
+          // sem source só há as cópias órfãs do upload — nada do trabalho
+          // salvo é tocado, e o aviso sobre Detectar pausas já valeu quando
+          // o source foi apagado
+          <>
+            Libera <strong>{tamanho(job.bytes_parts)}</strong> apagando as cópias do
+            upload que ficaram deste projeto. Nada do trabalho salvo é afetado.
+          </>
+        )}
       </p>
       <div className="flex gap-2">
         <button
@@ -332,7 +344,11 @@ export const ProjectsScreen: React.FC<{
                   >
                     Renomear
                   </button>
-                  {j.has_source && (
+                  {/* também sem source: projetos liberados antes das partes
+                      entrarem na limpeza ficaram com órfãs em input/ que a
+                      lista mostra no tamanho — este botão é o único caminho
+                      de varrê-las sem excluir o projeto */}
+                  {(j.has_source || j.bytes_parts > 0) && (
                     <button
                       aria-label={`liberar espaço de ${j.slug}`}
                       onClick={() => setModo({ slug: j.slug, tipo: "liberando" })}

@@ -372,7 +372,7 @@ describe("ProjectsScreen — liberar espaço", () => {
     expect(screen.getByText("A1")).toBeInTheDocument();
   });
 
-  it("projeto sem source não oferece liberar espaço", async () => {
+  it("projeto sem source e sem partes não oferece liberar espaço", async () => {
     const api = await import("../api");
     (api.listJobs as any).mockResolvedValueOnce([
       { ...projeto, has_source: false, bytes_source: 0 },
@@ -380,6 +380,24 @@ describe("ProjectsScreen — liberar espaço", () => {
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
     await screen.findByText("A1");
     expect(screen.queryByRole("button", { name: /liberar espaço/i })).not.toBeInTheDocument();
+  });
+
+  it("sem source mas com cópias de upload órfãs, oferece liberar só as cópias", async () => {
+    // projetos liberados antes das partes entrarem na limpeza: a lista mostra
+    // o tamanho das órfãs, e este botão é o único jeito de varrê-las sem
+    // excluir o projeto
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([
+      { ...projeto, has_source: false, bytes_source: 0, bytes_parts: 50_000_000 },
+    ]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar liberar espaço de A1/i });
+
+    expect(aviso.textContent).toMatch(/cópias do upload/i);
+    expect(aviso.textContent).toMatch(/nada do trabalho salvo é afetado/i);
+    // o aviso sobre Detectar pausas é do caso com source — aqui seria falso
+    expect(aviso.textContent).not.toMatch(/detectar pausas/i);
   });
 
   it("avisa que transcrever e cortes manuais continuam possíveis", async () => {

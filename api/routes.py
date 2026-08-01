@@ -45,6 +45,19 @@ def _roots() -> tuple[Path, Path, Path]:
     )
 
 
+def _dir_do_job(slug: str, jobs_root: Path) -> Path:
+    """Único jeito de montar o caminho do job nas rotas: via _job_dir_seguro.
+
+    Travessia (slug que resolve para fora de jobs_root) vira o mesmo 404 de
+    "não existe" — nas leituras e nas escritas. Não exige que o diretório
+    exista: quem precisa disso checa por conta própria (ou deixa o arquivo
+    ausente virar 404 naturalmente)."""
+    alvo = _job_dir_seguro(slug, Path(jobs_root))
+    if alvo is None:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    return alvo
+
+
 @router.get("/jobs")
 def read_jobs() -> list[JobSummary]:
     """Projetos salvos, para a tela de lista."""
@@ -157,7 +170,10 @@ def remove_source(slug: str):
     except ArquivoEmUsoError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not apagou:
-        raise HTTPException(status_code=404, detail="este projeto não tem vídeo original")
+        raise HTTPException(
+            status_code=404,
+            detail="este projeto não tem vídeo original nem cópias de upload para liberar",
+        )
     return {"ok": True}
 
 
@@ -232,7 +248,7 @@ def run_cut(slug: str, params: CutParams):
 def read_cuts(slug: str) -> CutResult | None:
     """Estado do corte para o passo 2 remontar. `null` = ainda não cortou."""
     jobs_root, *_ = _roots()
-    return cut_result(Path(jobs_root) / slug)
+    return cut_result(_dir_do_job(slug, jobs_root))
 
 
 @router.post("/jobs/{slug}/refine")
@@ -259,7 +275,7 @@ def run_refine(slug: str, params: RefineParams):
 @router.get("/jobs/{slug}/transcript")
 def get_transcript(slug: str):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "transcript.json"
+    p = _dir_do_job(slug, jobs_root) / "transcript.json"
     if not p.exists():
         raise HTTPException(status_code=404, detail="transcript inexistente")
     return load_json(p)
@@ -268,7 +284,7 @@ def get_transcript(slug: str):
 @router.put("/jobs/{slug}/transcript")
 def put_transcript(slug: str, lines: list[dict]):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "transcript.json"
+    p = _dir_do_job(slug, jobs_root) / "transcript.json"
     write_json(p, lines)
     return {"ok": True}
 
@@ -276,7 +292,7 @@ def put_transcript(slug: str, lines: list[dict]):
 @router.get("/jobs/{slug}/overlays")
 def get_overlays(slug: str):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "overlays.json"
+    p = _dir_do_job(slug, jobs_root) / "overlays.json"
     if not p.exists():
         return []
     return load_json(p)
@@ -285,7 +301,7 @@ def get_overlays(slug: str):
 @router.put("/jobs/{slug}/overlays")
 def put_overlays(slug: str, overlays: list[OverlayParams]):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "overlays.json"
+    p = _dir_do_job(slug, jobs_root) / "overlays.json"
     write_json(p, [o.model_dump() for o in overlays])
     return {"ok": True}
 
@@ -293,7 +309,7 @@ def put_overlays(slug: str, overlays: list[OverlayParams]):
 @router.get("/jobs/{slug}/suggestions")
 def get_suggestions(slug: str):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "suggestions.json"
+    p = _dir_do_job(slug, jobs_root) / "suggestions.json"
     if not p.exists():
         return []
     return load_json(p)
@@ -302,7 +318,7 @@ def get_suggestions(slug: str):
 @router.put("/jobs/{slug}/suggestions")
 def put_suggestions(slug: str, suggestions: list[Suggestion]):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "suggestions.json"
+    p = _dir_do_job(slug, jobs_root) / "suggestions.json"
     write_json(p, [s.model_dump() for s in suggestions])
     return {"ok": True}
 
@@ -320,7 +336,7 @@ def run_suggest(slug: str):
     real sem transcrição gravada).
     """
     jobs_root, *_ = _roots()
-    job_dir = Path(jobs_root) / slug
+    job_dir = _dir_do_job(slug, jobs_root)
 
     try:
         state = get_state(slug, jobs_root)
@@ -365,7 +381,7 @@ def run_suggest(slug: str):
 @router.get("/jobs/{slug}/suggest-defaults")
 def get_suggest_defaults(slug: str):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "suggest-defaults.json"
+    p = _dir_do_job(slug, jobs_root) / "suggest-defaults.json"
     if not p.exists():
         return SuggestDefaults().model_dump()
     return load_json(p)
@@ -374,7 +390,7 @@ def get_suggest_defaults(slug: str):
 @router.put("/jobs/{slug}/suggest-defaults")
 def put_suggest_defaults(slug: str, defaults: SuggestDefaults):
     jobs_root, *_ = _roots()
-    p = Path(jobs_root) / slug / "suggest-defaults.json"
+    p = _dir_do_job(slug, jobs_root) / "suggest-defaults.json"
     write_json(p, defaults.model_dump())
     return {"ok": True}
 
@@ -382,7 +398,7 @@ def put_suggest_defaults(slug: str, defaults: SuggestDefaults):
 @router.get("/jobs/{slug}/hook")
 def get_hook(slug: str):
     jobs_root, *_ = _roots()
-    job_dir = Path(jobs_root) / slug
+    job_dir = _dir_do_job(slug, jobs_root)
     p = job_dir / "hook.json"
     if p.exists():
         d = load_json(p)
@@ -403,7 +419,7 @@ def get_hook(slug: str):
 @router.put("/jobs/{slug}/hook")
 def put_hook(slug: str, hook: Hook):
     jobs_root, *_ = _roots()
-    write_json(Path(jobs_root) / slug / "hook.json", hook.model_dump())
+    write_json(_dir_do_job(slug, jobs_root) / "hook.json", hook.model_dump())
     update_hook_card_frames(slug, jobs_root, hook.duration_frames)
     return {"ok": True}
 
@@ -446,7 +462,7 @@ def run_recipe(slug: str):
 @router.get("/jobs/{slug}/files/{name}")
 def get_file(slug: str, name: str):
     jobs_root, _, output_root = _roots()
-    job_dir = Path(jobs_root) / slug
+    job_dir = _dir_do_job(slug, jobs_root)
     p = allowed_file_path(job_dir, name)
     if p and p.exists():
         return FileResponse(p, media_type="video/mp4", filename=name)
@@ -535,7 +551,7 @@ def _assert_recipe_matches_orientation(props_path: Path, orientation: str) -> No
 async def run_render(slug: str):
     jobs_root, _, output_root = _roots()
     output_root.mkdir(parents=True, exist_ok=True)
-    job_dir = Path(jobs_root) / slug
+    job_dir = _dir_do_job(slug, jobs_root)
     props_path = (job_dir / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="edit-recipe.json não existe; rode /recipe antes")
@@ -602,7 +618,7 @@ async def get_still(slug: str, frame: int = 0):
     ProjetoNaoEncontradoError para um diretório inexistente) precisar rodar
     primeiro — esta rota não está na lista de 404 de slug inexistente."""
     jobs_root, _, output_root = _roots()
-    props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
+    props_path = (_dir_do_job(slug, jobs_root) / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="recipe ausente")
     orientation = get_state(slug, jobs_root).orientation

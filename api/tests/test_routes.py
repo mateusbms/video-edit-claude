@@ -247,3 +247,25 @@ def test_suggest_defaults_accepts_animation_fields(client, sample_mp4):
     assert client.put("/api/jobs/sd1/suggest-defaults", json=d).status_code == 200
     got = client.get("/api/jobs/sd1/suggest-defaults").json()
     assert got["enter"] == "pop" and got["durationInFrames"] == 90 and got["maxWidthPct"] == 70
+
+
+def test_get_job_slug_com_travessia_responde_404(client, tmp_root):
+    """Minor da revisão do lote de 2026-08-01: as rotas de escrita já montam
+    o caminho via _job_dir_seguro, mas as de leitura ainda usavam
+    jobs_root / slug cru — um slug de travessia que resolvesse para um
+    diretório existente fora de jobs_root recebia uma leitura confiante.
+    O guard vira o único jeito de montar o caminho também na leitura."""
+    r = client.get("/api/jobs/%2e%2e")
+    assert r.status_code == 404
+
+
+def test_get_transcript_slug_com_travessia_responde_404(client, tmp_root):
+    r = client.get("/api/jobs/%2e%2e/transcript")
+    assert r.status_code == 404
+
+
+def test_put_overlays_slug_com_travessia_responde_404(client, tmp_root):
+    """Escrita: um PUT com travessia não pode gravar overlays.json fora de
+    jobs_root."""
+    r = client.put("/api/jobs/%2e%2e/overlays", json=[])
+    assert r.status_code == 404

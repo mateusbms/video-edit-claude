@@ -95,13 +95,29 @@ def test_apagar_o_source_preserva_o_render_exportado(client, tmp_root):
     assert render.exists(), "o render exportado não pode sumir junto"
 
 
-def test_liberar_espaco_sem_source_responde_404(client, tmp_root):
-    """Projeto existe, mas não tem source: 404 com mensagem específica —
-    distinta da de "projeto não encontrado" (ver teste abaixo)."""
+def test_liberar_espaco_sem_source_e_sem_partes_responde_404(client, tmp_root):
+    """Projeto existe, mas não tem source nem cópias de upload: nada para
+    liberar — 404 com mensagem específica, distinta da de "projeto não
+    encontrado" (ver teste abaixo)."""
     _criar_job(tmp_root, "d6", {"trimmed.mp4": b"y"})
     r = client.delete("/api/jobs/d6/source")
     assert r.status_code == 404
     assert "vídeo original" in r.json()["detail"]
+
+
+def test_liberar_espaco_sem_source_mas_com_partes_responde_200(client, tmp_root):
+    """Minor da revisão do lote de 2026-08-01: projeto liberado ANTES das
+    partes entrarem na limpeza ficou com órfãs em input/ que a tela mostra no
+    tamanho mas nenhum botão alcançava (Liberar espaço sumia sem source, e o
+    backend devolvia 404 mesmo tendo varrido). Agora liberar de novo apaga as
+    órfãs e responde 200."""
+    _criar_job(tmp_root, "d13", {"trimmed.mp4": b"y"})
+    orfa = tmp_root / "input" / "d13-part0.mp4"
+    orfa.write_bytes(b"parte orfa")
+
+    r = client.delete("/api/jobs/d13/source")
+    assert r.status_code == 200
+    assert not orfa.exists()
 
 
 def test_liberar_espaco_de_projeto_inexistente_diz_que_o_projeto_nao_existe(client, tmp_root):
@@ -160,12 +176,12 @@ def test_liberar_espaco_nao_apaga_partes_de_projeto_com_prefixo_parecido(tmp_pat
     assert vizinha2.exists(), "liberar A1 não pode levar a parte de A1-part2 junto"
 
 
-def test_liberar_espaco_sem_source_devolve_false_mas_apaga_partes_orfas(tmp_path):
+def test_liberar_espaco_sem_source_apaga_partes_orfas_e_devolve_true(tmp_path):
     """Roda mesmo quando o source já não está lá — o cenário que mais importa
     na prática: projetos que já usaram "Liberar espaço" antes desta correção
-    ficaram com partes órfãs em input/ que nem excluir nem liberar de novo
-    (sem source, sempre 404) jamais tocavam. O contrato de retorno não muda:
-    False continua significando só "não havia source para apagar"."""
+    ficaram com partes órfãs em input/. O contrato agora é "apagou algo":
+    varrer as órfãs conta como liberar (a rota responde 200, não 404 depois
+    de ter apagado)."""
     from api.jobs import delete_source
 
     jobs_root = tmp_path / "jobs"
@@ -181,8 +197,11 @@ def test_liberar_espaco_sem_source_devolve_false_mas_apaga_partes_orfas(tmp_path
     orfa = input_root / "d12-part0.mp4"
     orfa.write_bytes(b"parte orfa de um liberar espaco anterior")
 
-    assert delete_source("d12", jobs_root, input_root) is False
+    assert delete_source("d12", jobs_root, input_root) is True
     assert not orfa.exists()
+
+    # segunda chamada: nada sobrou para liberar
+    assert delete_source("d12", jobs_root, input_root) is False
 
 
 def test_slug_com_travessia_de_caminho_e_recusado(client, tmp_root):

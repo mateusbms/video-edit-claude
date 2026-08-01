@@ -363,8 +363,10 @@ def _padrao_partes(slug: str) -> re.Pattern:
     return re.compile(re.escape(slug) + r"-part\d+\.[^.]+")
 
 
-def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
-    """Apaga input/<slug>-part<N>.<ext> (ver `_padrao_partes`).
+def _apagar_partes_de_upload(slug: str, input_root: Path) -> int:
+    """Apaga input/<slug>-part<N>.<ext> (ver `_padrao_partes`) e devolve
+    quantas partes apagou — delete_source usa a contagem para saber se a
+    varredura de órfãs "liberou algo" num projeto que já não tem source.
 
     Sem isto, cada projeto excluído deixava cópias invisíveis do vídeo
     original em input/, numa tela cuja razão de existir é o disco não crescer
@@ -377,19 +379,22 @@ def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
     """
     root = Path(input_root)
     if not root.is_dir():
-        return
+        return 0
     padrao = _padrao_partes(slug)
     try:
         candidatos = [p for p in root.iterdir() if p.is_file() and padrao.fullmatch(p.name)]
     except OSError as e:
         logger.warning("iterdir falhou em %s, partes de upload não apagadas: %s", root, e)
-        return
+        return 0
+    apagadas = 0
     for p in candidatos:
         try:
             p.unlink()
+            apagadas += 1
         except OSError as e:
             logger.warning("não deu para apagar a parte órfã %s: %s", p, e)
             continue
+    return apagadas
 
 
 def delete_source(slug: str, jobs_root: Path, input_root: Path) -> bool:
@@ -404,27 +409,29 @@ def delete_source(slug: str, jobs_root: Path, input_root: Path) -> bool:
 
     A limpeza das partes roda sempre que o projeto existe — inclusive quando
     o source já não está lá, ou quando o unlink do source falha — para varrer
-    partes órfãs de projetos liberados antes desta função existir. É
-    melhor-esforço e não muda o contrato de retorno: True continua
-    significando só "apagou o source".
+    partes órfãs de projetos liberados antes de as partes entrarem na
+    limpeza. Contrato de retorno: True = **apagou algo** (o source e/ou
+    partes); varrer órfãs num projeto sem source conta como liberar, senão a
+    rota responderia 404 depois de ter apagado de verdade.
 
     Levanta ProjetoNaoEncontradoError se o diretório do projeto não existir —
-    distinto de "existe mas não tem source", que devolve False. Levanta
-    ArquivoEmUsoError se o unlink do source esbarrar num arquivo aberto por
-    outro processo. Um FileNotFoundError (dois DELETEs concorrentes no mesmo
-    slug) não é isso: vira o mesmo False de "não havia o que apagar".
+    distinto de "existe mas não havia nada para liberar", que devolve False.
+    Levanta ArquivoEmUsoError se o unlink do source esbarrar num arquivo
+    aberto por outro processo. Um FileNotFoundError (dois DELETEs
+    concorrentes no mesmo slug) não é isso: cai no mesmo critério de "apagou
+    algo?" via contagem de partes.
     """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
         raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
-    _apagar_partes_de_upload(alvo.name, input_root)
+    partes_apagadas = _apagar_partes_de_upload(alvo.name, input_root)
     source = alvo / "source.mp4"
     if not source.exists():
-        return False
+        return partes_apagadas > 0
     try:
         source.unlink()
     except FileNotFoundError:
-        return False
+        return partes_apagadas > 0
     except OSError as e:
         raise ArquivoEmUsoError(
             "não deu para apagar: há um processo usando os arquivos deste projeto"
@@ -448,8 +455,11 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
     Rotas que chamam get_state depois de init_job/update_* (diretório já
     garantido) nunca veem esta exceção na prática.
     """
-    job_dir = Path(jobs_root) / slug
-    if not job_dir.is_dir():
+    # _job_dir_seguro também aqui: a leitura não pode ser o único caminho que
+    # aceita travessia — um slug que resolve para fora de jobs_root é o mesmo
+    # 404 de "não existe".
+    job_dir = _job_dir_seguro(slug, Path(jobs_root))
+    if job_dir is None or not job_dir.is_dir():
         raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     probe = None
     if (job_dir / "probe.json").exists():

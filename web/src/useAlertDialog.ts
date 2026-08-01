@@ -20,14 +20,17 @@ const SELETOR_FOCAVEL =
  */
 export function useAlertDialog<T extends HTMLElement>(onClose: () => void, busy = false) {
   const ref = useRef<T>(null);
+  // `onClose` e `busy` vão em refs para o Esc ler o valor atual sem re-rodar
+  // o efeito principal (que roubaria o foco a cada render). Com uma operação
+  // em andamento, os botões do diálogo desabilitam — e o Esc não pode burlar
+  // isso fechando o diálogo no meio da operação. A sincronização acontece num
+  // efeito (não durante o render), como o guia do React pede para refs.
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  // `busy` também vai numa ref, pelo mesmo motivo de `onClose`: o Esc precisa
-  // ler o valor atual sem re-rodar o efeito (o que roubaria o foco). Com uma
-  // operação em andamento, os botões do diálogo desabilitam — e o Esc não
-  // pode burlar isso fechando o diálogo no meio da operação.
   const busyRef = useRef(busy);
-  busyRef.current = busy;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    busyRef.current = busy;
+  });
 
   useEffect(() => {
     const dialog = ref.current;
