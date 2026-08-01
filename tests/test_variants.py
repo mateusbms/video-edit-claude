@@ -197,8 +197,9 @@ def test_concat_divergente_normaliza_so_o_hook(monkeypatch, tmp_path):
 
 
 def test_concat_que_falha_mesmo_normalizado_estoura(monkeypatch, tmp_path):
-    from pipeline import variants
     import pytest as _pytest
+
+    from pipeline import variants
 
     monkeypatch.setattr(variants, "_probe_stream_info",
                         lambda p: {"p": p, "fps": 30.0, "has_audio": True})
@@ -219,8 +220,8 @@ def test_paridade_captions_da_variacao_sao_as_da_matriz_deslocadas():
     from pipeline.variants import fundir_transcricoes
     fps = 30.0
     delta = 3.2
-    base = dict(width=1080, height=1920, fps=fps,
-                hook={"title": "", "subtitle": ""}, hook_card_frames=0)
+    base = {"width": 1080, "height": 1920, "fps": fps,
+            "hook": {"title": "", "subtitle": ""}, "hook_card_frames": 0}
 
     palavras_corpo = [{"word": "corpo", "start": 1.0, "end": 2.0}]
     r_matriz = build_recipe(trimmed_duration=8.0, words=palavras_corpo, **base)
