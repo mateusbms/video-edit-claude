@@ -96,7 +96,11 @@ def stage_transcribe(job: Job, progress_cb=None) -> None:
 def stage_recipe(job: Job) -> None:
     meta = load_json(job.dir / "probe.json")
     transcript = load_json(job.dir / "transcript.json")
-    hook = load_json(job.dir / "hook.json")
+    # hook.json só existe depois do passo de Hook — que uma matriz de
+    # variações não tem. Sem ele, a recipe nasce com o hook vazio (overlay
+    # invisível), em vez de estourar FileNotFoundError → 500 no Concluir.
+    hook_path = job.dir / "hook.json"
+    hook = load_json(hook_path) if hook_path.exists() else {}
     # achatar palavras de todas as linhas
     words = []
     for line in transcript:

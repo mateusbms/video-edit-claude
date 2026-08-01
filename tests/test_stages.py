@@ -224,3 +224,22 @@ def test_stage_cut_sem_derivados_nao_falha(tmp_path, monkeypatch):
                {"width": 1080, "height": 1920, "fps": 30.0, "duration": 8.0})
     _cut_falso(monkeypatch, job)
     assert (job.dir / "trimmed.mp4").exists()
+
+
+def test_stage_recipe_sem_hook_json_nao_estoura(tmp_path):
+    """Achado Critical da revisão das variações de hook: a matriz nunca passa
+    pelo passo de Hook, então hook.json não existe — e o Concluir do wizard
+    (que salva os textos e gera a recipe) estourava com FileNotFoundError →
+    500, prendendo o usuário no passo Textos. Sem hook.json, a recipe nasce
+    com o overlay de hook vazio (invisível), como um título vazio já nascia."""
+    job = init_job(tmp_path / "jobs", "m1")
+    write_json(job.dir / "probe.json", {"width": 1920, "height": 1080, "fps": 30, "duration": 2.0})
+    write_json(job.dir / "transcript.json",
+               [{"text": "ola", "start": 0.0, "end": 0.5,
+                 "words": [{"word": "ola", "start": 0.0, "end": 0.5}]}])
+
+    stage_recipe(job)
+
+    recipe = load_json(job.dir / "edit-recipe.json")
+    assert recipe["overlays"][0]["type"] == "hook"
+    assert recipe["overlays"][0]["text"] == ""

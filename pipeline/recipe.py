@@ -147,7 +147,7 @@ def build_recipe(
         {
             "id": "ov_hook",
             "type": "hook",
-            "text": hook["title"],
+            "text": hook.get("title", ""),
             "fromFrame": 0,
             "durationInFrames": duration_frames,
             "x": hx, "y": hy, "anchor": hanchor,

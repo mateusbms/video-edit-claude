@@ -43,6 +43,16 @@ describe("ProjectsScreen", () => {
     expect(await screen.findByText(/renderizado/i)).toBeInTheDocument();
   });
 
+  it("matriz nunca diz 'pronto para renderizar' — o destino dela é gerar variações", async () => {
+    // achado Important da revisão final: uma matriz transcrita mostrava o
+    // rótulo dos projetos normais, prometendo um render que ela não tem
+    listJobs.mockResolvedValueOnce([{ ...projeto, papel: "matriz" as const,
+      has_render_9x16: false, has_recipe: true }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    expect(await screen.findByText(/matriz pronta para variações/i)).toBeInTheDocument();
+    expect(screen.queryByText(/pronto para renderizar/i)).not.toBeInTheDocument();
+  });
+
   it("mostra o espaço ocupado", async () => {
     listJobs.mockResolvedValueOnce([projeto]);
     render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);

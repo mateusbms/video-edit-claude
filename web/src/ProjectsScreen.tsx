@@ -25,6 +25,15 @@ export const sugerirNomeVariacao = (matriz: string, existentes: string[]): strin
 
 /** Em que ponto do wizard o projeto parou, para a lista dar contexto. */
 function progresso(j: JobSummary): string {
+  // matriz não renderiza por desenho: o destino dela é gerar variações, então
+  // "pronto para renderizar"/"renderizado" seriam mentira — o ponto de
+  // chegada é "pronta para variações" (corpo cortado e transcrito)
+  if (j.papel === "matriz") {
+    if (j.has_transcript) return "matriz pronta para variações";
+    if (j.has_trimmed) return "matriz — corpo cortado";
+    if (!j.has_source) return "sem vídeo";
+    return "matriz — só o vídeo";
+  }
   if (j.has_render_16x9 || j.has_render_9x16) return "renderizado";
   if (j.has_recipe) return "pronto para renderizar";
   if (j.has_hook) return "com hook";

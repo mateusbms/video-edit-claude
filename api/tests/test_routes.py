@@ -299,3 +299,22 @@ def test_papel_invalido_no_upload_e_400(client, sample_mp4):
         r = client.post("/api/jobs", data={"slug": "n2", "papel": "chefe"},
                         files=[("files", ("s.mp4", f, "video/mp4"))])
     assert r.status_code == 400
+
+
+def test_recipe_sem_hook_json_responde_200(client, tmp_root):
+    """Costura do Critical das variações de hook: o Concluir da matriz salva
+    os textos e chama POST /recipe — sem hook.json (a matriz não tem passo de
+    Hook), isso estourava FileNotFoundError → 500 e prendia o usuário no
+    passo Textos."""
+    from pipeline.job import write_json
+    d = tmp_root / "jobs" / "m2"
+    d.mkdir(parents=True)
+    write_json(d / "job.config.json", {"papel": "matriz"})
+    write_json(d / "probe.json", {"width": 1920, "height": 1080, "fps": 30, "duration": 2.0})
+    write_json(d / "transcript.json",
+               [{"text": "ola", "start": 0.0, "end": 0.5,
+                 "words": [{"word": "ola", "start": 0.0, "end": 0.5}]}])
+
+    r = client.post("/api/jobs/m2/recipe")
+    assert r.status_code == 200, r.text
+    assert (d / "edit-recipe.json").exists()
