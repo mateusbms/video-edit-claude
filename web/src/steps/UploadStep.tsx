@@ -74,6 +74,9 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
   const [err, setErr] = useState<string | null>(null);
   const [colisao, setColisao] = useState<JobSummary | null>(null);
   const [slugsUsados, setSlugsUsados] = useState<string[]>([]);
+  // Matriz = projeto só do corpo (sem hook falado), que depois gera
+  // variações compondo um hook por cima (spec 2026-08-01-variacoes-de-hook).
+  const [matriz, setMatriz] = useState(false);
   // Marca se o usuário já digitou algo no campo à mão. Num backend lento,
   // a resposta de listJobs() pode chegar depois de quem já começou a digitar
   // um nome — sem essa marca, a sugestão trocava o nome no meio da digitação.
@@ -145,7 +148,7 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
     if (files.length === 0) return;
     setBusy(true); setErr(null); setColisao(null);
     try {
-      const r = await uploadJob(files, alvo, overwrite);
+      const r = await uploadJob(files, alvo, overwrite, matriz ? "matriz" : "normal");
       setSlug(r.slug); setProbe(r.probe); setFiles([]); setChanged(false);
       const detected = r.probe
         ? orientationFromProbe(r.probe.width, r.probe.height)
@@ -229,6 +232,11 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
           ))}
         </ol>
       )}
+
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
+        <input type="checkbox" checked={matriz} onChange={(e) => setMatriz(e.target.checked)} />
+        Matriz de variações de hook (só o corpo, sem hook falado)
+      </label>
 
       <button
         onClick={() => onUpload()} disabled={files.length === 0 || busy}

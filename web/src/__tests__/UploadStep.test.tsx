@@ -450,3 +450,38 @@ describe("UploadStep — projeto novo e colisão de nome", () => {
     expect((api.uploadJob as any).mock.calls.length).toBe(1);
   });
 });
+
+describe("UploadStep — toggle de matriz", () => {
+  beforeEach(() => {
+    uploadJob.mockReset();
+    uploadJob.mockResolvedValue({ slug: "v1", probe: null });
+    putOrientation.mockReset();
+    getJob.mockReset();
+    getJob.mockImplementation(async () => ({}) as any);
+    listJobs.mockReset();
+    listJobs.mockImplementation(async () => []);
+  });
+
+  it("com o toggle de matriz marcado, o upload manda papel=matriz", async () => {
+    render(<UploadStep {...props} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: /matriz de variações de hook/i }));
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    await waitFor(() => expect(uploadJob).toHaveBeenCalled());
+    const chamada = (uploadJob as any).mock.calls.at(-1);
+    expect(chamada[3]).toBe("matriz");
+  });
+
+  it("sem o toggle, o upload continua normal", async () => {
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    await waitFor(() => expect(uploadJob).toHaveBeenCalled());
+    const chamada = (uploadJob as any).mock.calls.at(-1);
+    expect(chamada[3]).toBe("normal");
+  });
+});
