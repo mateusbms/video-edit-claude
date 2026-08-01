@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -5,10 +6,12 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routes import router
-from api.brand_kits_routes import router as brand_kits_router
-from api.tts_routes import router as tts_router
 from api.animated_routes import router as animated_router
+from api.brand_kits_routes import router as brand_kits_router
+from api.routes import router
+from api.tts_routes import router as tts_router
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 TTS_MODE = os.getenv("TTS_MODE", "elevenlabs")
 if TTS_MODE not in ("elevenlabs", "mock"):

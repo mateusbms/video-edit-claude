@@ -1,13 +1,24 @@
+import logging
 import re
 import shutil
 from dataclasses import asdict
 from pathlib import Path
 
+from api.models import (
+    CutParams,
+    CutResult,
+    CutSegmentOut,
+    Hook,
+    JobState,
+    JobSummary,
+    ProbeOut,
+)
 from pipeline.job import JobConfig, init_job, load_json, write_json
 from pipeline.orientation import FRAME_SIZES, frame_size, resolve_orientation
 from pipeline.recipe import brand_of_kit, resolve_caption_style
 from pipeline.stages import DERIVADOS_DO_SOURCE
-from api.models import CutParams, CutResult, CutSegmentOut, Hook, JobState, JobSummary, ProbeOut
+
+logger = logging.getLogger(__name__)
 
 
 ALLOWED_FILES = {
@@ -65,7 +76,8 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
         return None
     try:
         cfg = load_json(cfg_path)
-    except Exception:
+    except Exception as e:
+        logger.warning("config ilegível em %s: %s", cfg_path, e)
         return None
 
     arquivos = [p for p in job_dir.iterdir() if p.is_file()]
@@ -75,7 +87,8 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
     if probe_path.exists():
         try:
             probe = load_json(probe_path)
-        except Exception:
+        except Exception as e:
+            logger.warning("probe ilegível em %s: %s", probe_path, e)
             probe = None
 
     slug = job_dir.name
@@ -112,7 +125,10 @@ def _tamanho_seguro(p: Path) -> int:
     """
     try:
         return p.stat().st_size
-    except OSError:
+    except FileNotFoundError:
+        return 0
+    except OSError as e:
+        logger.warning("tamanho ilegível de %s, contando 0: %s", p, e)
         return 0
 
 
@@ -120,7 +136,10 @@ def _mtime_seguro(p: Path) -> float:
     """Mesma proteção de `_tamanho_seguro`, para `updated_at`."""
     try:
         return p.stat().st_mtime
-    except OSError:
+    except FileNotFoundError:
+        return 0.0
+    except OSError as e:
+        logger.warning("mtime ilegível de %s, contando 0: %s", p, e)
         return 0.0
 
 
@@ -156,7 +175,8 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
         return None
     try:
         arquivos = [p for p in job_dir.iterdir() if p.is_file()]
-    except OSError:
+    except OSError as e:
+        logger.warning("iterdir falhou em %s, tamanhos e updated_at zerados: %s", job_dir, e)
         arquivos = []
     source = job_dir / "source.mp4"
     has_source = source.exists()
@@ -302,12 +322,14 @@ def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
     padrao = re.compile(re.escape(slug) + r"-part\d+\.[^.]+")
     try:
         candidatos = [p for p in root.iterdir() if p.is_file() and padrao.fullmatch(p.name)]
-    except OSError:
+    except OSError as e:
+        logger.warning("iterdir falhou em %s, partes de upload não apagadas: %s", root, e)
         return
     for p in candidatos:
         try:
             p.unlink()
-        except OSError:
+        except OSError as e:
+            logger.warning("não deu para apagar a parte órfã %s: %s", p, e)
             continue
 
 
