@@ -251,12 +251,15 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <h2 className="text-xl font-semibold">2. Cortar pausas</h2>
       <Slider label="Limite de silêncio (dB)" value={params.silence_threshold_db}
         min={-50} max={-10} step={1} format={(n) => `${n} dB`}
+        hint="O que conta como pausa: mais alto corta mais (até respiração e fala baixa); mais baixo, só silêncio quase absoluto."
         onChange={(n) => setParams({ ...params, silence_threshold_db: n })} />
       <Slider label="Padding ao redor da fala (s)" value={params.padding}
         min={0} max={0.5} step={0.05} format={(n) => `${n.toFixed(2)} s`}
+        hint="Margem mantida antes e depois de cada fala: mais alto respira melhor; abaixo de ~0.10 s arrisca comer o começo das palavras."
         onChange={(n) => setParams({ ...params, padding: n })} />
       <Slider label="Silêncio mínimo (s)" value={params.min_silence}
         min={0.2} max={2.0} step={0.1} format={(n) => `${n.toFixed(1)} s`}
+        hint="Só pausas mais longas que isto são cortadas: mais baixo acelera o ritmo (some tudo); mais alto preserva os respiros naturais."
         onChange={(n) => setParams({ ...params, min_silence: n })} />
       {/* refining na guarda: corte e refino reescrevem o mesmo trimmed.mp4 —
           um de cada vez */}

@@ -84,6 +84,15 @@ describe("CutsStep — retomar o trabalho ao voltar para o passo", () => {
     await waitFor(() => expect(getCuts).toHaveBeenCalledWith("v1"));
     expect(screen.queryByText(/trechos mantidos/i)).not.toBeInTheDocument();
   });
+
+  it("cada slider explica o impacto do ajuste", async () => {
+    // o rótulo diz o que o controle é; a dica diz o que mexer nele FAZ —
+    // sem ela, os três números são um chute para quem edita
+    render(<CutsStep {...props} />);
+    expect(await screen.findByText(/o que conta como pausa/i)).toBeInTheDocument();
+    expect(screen.getByText(/comer o começo das palavras/i)).toBeInTheDocument();
+    expect(screen.getByText(/respiros naturais/i)).toBeInTheDocument();
+  });
 });
 
 describe("CutsStep — versão do preview", () => {
