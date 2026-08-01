@@ -154,7 +154,7 @@ const ConfirmarLiberar: React.FC<{
 type Modo = { slug: string; tipo: "renomeando" | "excluindo" | "liberando" } | null;
 
 export const ProjectsScreen: React.FC<{
-  onOpen: (slug: string) => void;
+  onOpen: (slug: string, step?: number) => void;
   onNew: () => void;
 }> = ({ onOpen, onNew }) => {
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);

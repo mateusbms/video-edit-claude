@@ -36,7 +36,7 @@ function newOverlay(fromFrame: number, id: string, defs: SuggestDefaults): Overl
   };
 }
 
-export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
+export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back, nextLabel }) => {
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fps, setFps] = useState(30);
@@ -413,7 +413,7 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <div className="pt-4 flex justify-between">
         <button onClick={back} className="px-4 py-2 bg-zinc-800 rounded">← Voltar</button>
         <button onClick={async () => { if (await save()) next(); }} className="px-4 py-2 bg-emerald-600 rounded font-medium">
-          Próximo →
+          {nextLabel ?? "Próximo →"}
         </button>
       </div>
     </section>
