@@ -170,6 +170,42 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
     assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() != b"video antigo"
 
 
+def test_tem_trabalho_estourando_vira_409_nao_500(client, tmp_root, sample_mp4, monkeypatch):
+    """tem_trabalho() agora roda dentro do mesmo try que job_summary/
+    job_summary_minimo: uma exceção ali é o mesmo "não sei, então recuso"
+    dos dois — não pode vazar como 500 cru (pendência 4 do handoff)."""
+    import api.routes as routes_mod
+
+    _criar_job_com_trabalho(tmp_root, "A1")
+
+    def _levanta(job_dir):
+        raise OSError("falha simulada ao checar tem_trabalho")
+
+    monkeypatch.setattr(routes_mod, "tem_trabalho", _levanta)
+
+    r = _upload(client, "A1", sample_mp4)
+
+    assert r.status_code == 409
+    assert (tmp_root / "jobs" / "A1" / "source.mp4").read_bytes() == b"video antigo"
+
+
+def test_slug_invalido_no_upload_responde_400(client, tmp_root, sample_mp4):
+    """create_job passa a montar o caminho da guarda de sobrescrita via
+    _job_dir_seguro: um slug de travessia não pode virar um 404/500
+    confuso — 400 "nome inválido" explica o problema de verdade. O slug vem
+    de um campo de formulário (não da URL), então ".." literal chega sem
+    nenhuma decodificação de rota no meio."""
+    vizinho = tmp_root / "vizinho-fora-de-jobs"
+    r = client.post(
+        "/api/jobs",
+        files={"files": ("a.mp4", sample_mp4.read_bytes(), "video/mp4")},
+        data={"slug": "../vizinho-fora-de-jobs"},
+    )
+    assert r.status_code == 400
+    assert "inválido" in r.json()["detail"]
+    assert not vizinho.exists()
+
+
 def test_as_duas_funcoes_de_resumo_levantando_recusa_em_vez_de_liberar(
     client, tmp_root, sample_mp4, monkeypatch
 ):

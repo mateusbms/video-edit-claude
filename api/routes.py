@@ -15,10 +15,11 @@ from api.claude_cli import (
 )
 from api.jobs import (
     allowed_file_path, ArquivoEmUsoError, cut_result, delete_job,
-    delete_source, get_state, job_summary, job_summary_minimo, list_jobs,
-    ProjetoNaoEncontradoError, suggest_hook, tem_trabalho, update_brand_kit,
-    update_caption_style, update_config, update_hook_card_frames,
-    update_orientation, update_title, update_whisper_model,
+    delete_source, get_state, _job_dir_seguro, job_summary, job_summary_minimo,
+    list_jobs, ProjetoNaoEncontradoError, suggest_hook, tem_trabalho,
+    update_brand_kit, update_caption_style, update_config,
+    update_hook_card_frames, update_orientation, update_title,
+    update_whisper_model,
 )
 from api.suggest_prompt import build_prompt
 from api.models import (
@@ -67,28 +68,38 @@ async def create_job(
     # guarda vive aqui, e não só no diálogo da tela, para que a sobrescrita
     # silenciosa seja impossível por qualquer caminho.
     if not overwrite:
-        job_dir = Path(jobs_root) / slug
-        if tem_trabalho(job_dir):
-            # tem_trabalho() já confirmou que há algo a perder — daqui para
-            # baixo só existem dois desfechos possíveis: recusar com 409, ou
-            # (quando as duas funções concordam, sem levantar, que o trabalho
-            # sumiu numa corrida com um DELETE concorrente) deixar o upload
-            # seguir. Uma exceção ao montar o resumo NÃO é esse segundo caso:
-            # é "não sei", e "não sei" não pode virar "pode sobrescrever" — foi
-            # assim que uma PermissionError isolada em output/<slug>-16x9.mp4
-            # (um arquivo que tem_trabalho nem toca) bastava para apagar
-            # transcript.json/overlays.json em silêncio (achado B). Por isso o
-            # fallback do except é um resumo mínimo com o que já se sabe (o
-            # slug), não None.
-            try:
-                existente = (
+        job_dir = _job_dir_seguro(slug, jobs_root)
+        if job_dir is None:
+            raise HTTPException(status_code=400, detail="nome inválido")
+        # tem_trabalho() também entra no try: se ela estourar (em vez de
+        # devolver um bool limpo), é o mesmo "não sei" do comentário abaixo —
+        # não pode virar 500 nem liberar a sobrescrita, tem que cair no
+        # mesmo fallback conservador.
+        try:
+            existente = (
+                (
                     job_summary(job_dir, input_root, output_root)
                     or job_summary_minimo(job_dir, input_root, output_root)
                 )
-            except Exception:
-                existente = JobSummary(slug=slug)
-            if existente is not None:
-                raise HTTPException(status_code=409, detail=existente.model_dump())
+                if tem_trabalho(job_dir)
+                else None
+            )
+        except Exception:
+            # tem_trabalho() já tinha confirmado (antes deste bloco, quando
+            # ela não levanta) que há algo a perder — daqui para baixo só
+            # existem dois desfechos possíveis: recusar com 409, ou (quando
+            # job_summary/job_summary_minimo concordam, sem levantar, que o
+            # trabalho sumiu numa corrida com um DELETE concorrente) deixar o
+            # upload seguir. Uma exceção (aqui ou em tem_trabalho) NÃO é esse
+            # segundo caso: é "não sei", e "não sei" não pode virar "pode
+            # sobrescrever" — foi assim que uma PermissionError isolada em
+            # output/<slug>-16x9.mp4 (um arquivo que tem_trabalho nem toca)
+            # bastava para apagar transcript.json/overlays.json em silêncio
+            # (achado B). Por isso o fallback é um resumo mínimo com o que já
+            # se sabe (o slug), não None.
+            existente = JobSummary(slug=slug)
+        if existente is not None:
+            raise HTTPException(status_code=409, detail=existente.model_dump())
 
     paths: list[str] = []
     for i, f in enumerate(files):
@@ -108,8 +119,13 @@ async def create_job(
 
 @router.get("/jobs/{slug}")
 def read_job(slug: str):
+    """Um slug que nunca existiu não pode receber um estado default confiante
+    (200 com tudo em False) — vira 404, como os DELETEs e o PUT /title."""
     jobs_root, _, output_root = _roots()
-    state = get_state(slug, jobs_root)
+    try:
+        state = get_state(slug, jobs_root)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     state.has_render_16x9 = (output_root / f"{slug}-16x9.mp4").exists()
     state.has_render_9x16 = (output_root / f"{slug}-9x16.mp4").exists()
     return state.model_dump()
@@ -147,9 +163,17 @@ def remove_source(slug: str):
 
 @router.put("/jobs/{slug}/orientation")
 def put_orientation(slug: str, params: OrientationParams):
+    """update_orientation cria o projeto implicitamente para um slug novo
+    (fora do escopo do 404 de slug inexistente) — a única forma de
+    ProjetoNaoEncontradoError chegar aqui é um slug de travessia (guard
+    central de api.jobs), daí o 404."""
     jobs_root, *_ = _roots()
-    update_orientation(slug, jobs_root, params.orientation)
-    return {"ok": True, "orientation": get_state(slug, jobs_root).orientation}
+    try:
+        update_orientation(slug, jobs_root, params.orientation)
+        orientation = get_state(slug, jobs_root).orientation
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    return {"ok": True, "orientation": orientation}
 
 
 @router.put("/jobs/{slug}/title")
@@ -170,7 +194,14 @@ def run_cut(slug: str, params: CutParams):
     # stage_cut é o único leitor do source.mp4. Sem ele o ffmpeg estoura no meio
     # do stream SSE, com erro ilegível — e o projeto pode legitimamente não ter
     # mais o original, depois do "Liberar espaço". Recusa antes de gravar nada.
-    state = get_state(slug, jobs_root)
+    #
+    # get_state roda antes de qualquer coisa ser criada: um slug que nunca
+    # existiu vira 404, não o 409 confiante de "não sobrou vídeo" (que
+    # pressupõe um projeto real sem source).
+    try:
+        state = get_state(slug, jobs_root)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     if not state.has_source:
         if state.has_trimmed:
             detail = ("o vídeo original deste projeto foi apagado para liberar espaço; "
@@ -183,7 +214,10 @@ def run_cut(slug: str, params: CutParams):
                       "este projeto não tem nenhum corte salvo — não dá para detectar "
                       "pausas nem cortar manualmente aqui: não sobrou vídeo para trabalhar")
         raise HTTPException(status_code=409, detail=detail)
-    update_config(slug, jobs_root, params)
+    try:
+        update_config(slug, jobs_root, params)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     job = init_job(jobs_root, slug)
 
     def work(progress_cb):
@@ -280,9 +314,18 @@ def run_suggest(slug: str):
     Síncrono: o `claude -p` não reporta progresso. O backend é dono do arquivo —
     monta o prompt, recebe texto, valida como list[Suggestion], e só então grava.
     Uma geração ruim nunca destrói a anterior (a gravação vem depois da validação).
+
+    get_state roda antes de qualquer checagem: um slug que nunca existiu vira
+    404, não o 409 confiante de "sem transcrição" (que pressupõe um projeto
+    real sem transcrição gravada).
     """
     jobs_root, *_ = _roots()
     job_dir = Path(jobs_root) / slug
+
+    try:
+        state = get_state(slug, jobs_root)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
 
     tpath = job_dir / "transcript.json"
     if not tpath.exists():
@@ -295,7 +338,6 @@ def run_suggest(slug: str):
         if (job_dir / "suggest-defaults.json").exists()
         else SuggestDefaults().model_dump()
     )
-    state = get_state(slug, jobs_root)
     fps = state.probe.fps if state.probe else 30.0
 
     prompt = build_prompt(transcript, hook, defaults, fps=fps, orientation=state.orientation)
@@ -368,15 +410,25 @@ def put_hook(slug: str, hook: Hook):
 
 @router.put("/jobs/{slug}/caption-style")
 def put_caption_style(slug: str, style: CaptionStyleParams):
+    """update_caption_style cria o projeto implicitamente para um slug novo
+    (fora do escopo do 404 de slug inexistente) — só um slug de travessia
+    (guard central de api.jobs) levanta ProjetoNaoEncontradoError aqui."""
     jobs_root, *_ = _roots()
-    update_caption_style(slug, jobs_root, style)
+    try:
+        update_caption_style(slug, jobs_root, style)
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     return {"ok": True}
 
 
 @router.put("/jobs/{slug}/brand-kit")
 def put_brand_kit(slug: str, body: dict):
+    """Mesmo raciocínio de put_caption_style: só travessia vira 404 aqui."""
     jobs_root, *_ = _roots()
-    update_brand_kit(slug, jobs_root, body.get("slug", ""))
+    try:
+        update_brand_kit(slug, jobs_root, body.get("slug", ""))
+    except ProjetoNaoEncontradoError:
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
     return {"ok": True}
 
 
@@ -544,12 +596,17 @@ async def run_render(slug: str):
 
 @router.get("/jobs/{slug}/still")
 async def get_still(slug: str, frame: int = 0):
+    """A checagem de edit-recipe.json vem antes de get_state, na mesma ordem
+    de run_render: um slug sem diretório nunca tem recipe, então o 409
+    "recipe ausente" já cobre esse caso sem get_state (que agora levanta
+    ProjetoNaoEncontradoError para um diretório inexistente) precisar rodar
+    primeiro — esta rota não está na lista de 404 de slug inexistente."""
     jobs_root, _, output_root = _roots()
-    orientation = get_state(slug, jobs_root).orientation
-    composition, suffix = ORIENTATION_TO_FORMAT[orientation]
     props_path = (Path(jobs_root) / slug / "edit-recipe.json").resolve()
     if not props_path.exists():
         raise HTTPException(status_code=409, detail="recipe ausente")
+    orientation = get_state(slug, jobs_root).orientation
+    composition, suffix = ORIENTATION_TO_FORMAT[orientation]
     _assert_recipe_matches_orientation(props_path, orientation)
 
     remotion_dir = _publish_remotion_assets(slug, jobs_root)

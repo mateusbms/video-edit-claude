@@ -53,16 +53,19 @@ def test_recusar_nao_grava_os_parametros(client, tmp_root):
 
 
 def test_projeto_inexistente_tambem_recusa(client, tmp_root):
+    """Um slug que nunca existiu não pode receber o 409 confiante de "não
+    sobrou vídeo" — esse 409 pressupõe um projeto real sem source. Vira 404,
+    como as outras rotas de leitura (pendência 4 do handoff)."""
     r = client.post("/api/jobs/nunca-existiu/cut", json=CORTE)
-    assert r.status_code == 409
+    assert r.status_code == 404
     assert not (tmp_root / "jobs" / "nunca-existiu").exists(), "recusar não pode criar o job"
 
 
 def test_o_estado_do_job_expoe_o_que_o_refino_vai_apagar(client, tmp_root):
     _criar_job(tmp_root, "s4", {
         "source.mp4": b"x",
-        "overlays.json": b"[]",
-        "suggestions.json": b"[]",
+        "overlays.json": b'[{"id": "ov_a"}]',
+        "suggestions.json": b'[{"id": "sug_a"}]',
     })
     body = client.get("/api/jobs/s4").json()
     assert body["has_source"] is True

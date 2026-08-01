@@ -2,7 +2,12 @@ import errno
 import json
 from pathlib import Path
 
-from api.jobs import get_state, job_summary_minimo, suggest_hook, allowed_file_path
+import pytest
+
+from api.jobs import (
+    _tem_conteudo_lista, allowed_file_path, get_state, job_summary_minimo,
+    ProjetoNaoEncontradoError, suggest_hook,
+)
 from api.models import ProbeOut
 
 
@@ -10,7 +15,18 @@ def _write(p: Path, data):
     p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
-def test_get_state_empty(tmp_path):
+def test_get_state_para_slug_inexistente_levanta(tmp_path):
+    """Um slug cujo diretório nunca existiu não pode receber um estado
+    default confiante — as rotas de leitura (GET /jobs/{slug}, POST /cut,
+    POST /suggest) traduzem isso para 404 (pendência 4 do handoff)."""
+    with pytest.raises(ProjetoNaoEncontradoError):
+        get_state("v1", tmp_path)
+
+
+def test_get_state_diretorio_existente_mas_vazio(tmp_path):
+    """Diretório existe (por exemplo, criado por init_job) mas sem nenhum
+    artefato ainda: estado default, sem levantar."""
+    (tmp_path / "v1").mkdir()
     s = get_state("v1", tmp_path)
     assert s.slug == "v1"
     assert s.probe is None
@@ -92,3 +108,29 @@ def test_job_summary_minimo_nao_levanta_quando_um_stat_racha_depois_da_listagem(
     assert resumo is not None
     assert resumo.slug == "A1"
     assert resumo.has_transcript is True
+
+
+class TestTemConteudoLista:
+    """has_overlays/has_suggestions passam a significar "tem conteúdo", não
+    só "o arquivo existe" — overlays.json/suggestions.json podem existir
+    vazios sem que haja nada a perder ali (pendência 4 do handoff)."""
+
+    def test_arquivo_ausente_e_false(self, tmp_path):
+        assert _tem_conteudo_lista(tmp_path / "overlays.json") is False
+
+    def test_lista_vazia_e_false(self, tmp_path):
+        p = tmp_path / "overlays.json"
+        _write(p, [])
+        assert _tem_conteudo_lista(p) is False
+
+    def test_lista_com_item_e_true(self, tmp_path):
+        p = tmp_path / "overlays.json"
+        _write(p, [{"id": "ov_a"}])
+        assert _tem_conteudo_lista(p) is True
+
+    def test_json_invalido_e_true(self, tmp_path):
+        """Na dúvida, avisar: um arquivo ilegível não pode virar "sem
+        conteúdo" silenciosamente."""
+        p = tmp_path / "overlays.json"
+        p.write_text("{{{ isto não é json", encoding="utf-8")
+        assert _tem_conteudo_lista(p) is True

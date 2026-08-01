@@ -36,6 +36,24 @@ def test_put_rejeita_valor_invalido(client, sample_mp4):
     assert r.status_code == 422
 
 
+def test_put_orientation_de_slug_novo_cria_o_projeto_implicitamente(client, tmp_root):
+    """update_orientation continua criando o projeto para um slug nunca
+    visto — fora do escopo do 404 de slug inexistente (pendência 4 do
+    handoff): esta é a única rota de update usada para criar um job sem
+    passar por upload em vários outros testes deste arquivo."""
+    r = client.put("/api/jobs/o5/orientation", json={"orientation": "9x16"})
+    assert r.status_code == 200
+    assert (tmp_root / "jobs" / "o5").is_dir()
+
+
+def test_put_orientation_slug_com_travessia_responde_404(client, tmp_root):
+    """update_orientation passa a montar o caminho via _job_dir_seguro: um
+    slug de travessia (que não decodifica para o path original) vira 404,
+    não uma escrita silenciosa fora de jobs_root."""
+    r = client.put("/api/jobs/%2e%2e/orientation", json={"orientation": "9x16"})
+    assert r.status_code == 404
+
+
 def _caption_bottom(tmp_root, slug: str) -> int:
     import json
     cfg = tmp_root / "jobs" / slug / "job.config.json"

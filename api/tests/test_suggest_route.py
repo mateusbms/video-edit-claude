@@ -52,6 +52,16 @@ def test_suggest_missing_transcript_returns_409(client, tmp_root, monkeypatch):
     assert r.status_code == 409
 
 
+def test_suggest_slug_inexistente_responde_404(client, tmp_root, monkeypatch):
+    """Um slug que nunca existiu não pode receber o 409 confiante de "sem
+    transcrição" — esse 409 pressupõe um projeto real (pendência 4 do
+    handoff)."""
+    monkeypatch.setattr(routes, "run_claude", lambda prompt, timeout=180: VALID_RESULT)
+    r = client.post("/api/jobs/nunca-existiu/suggest")
+    assert r.status_code == 404
+    assert not (tmp_root / "jobs" / "nunca-existiu").exists()
+
+
 def test_suggest_missing_cli_returns_503(client, tmp_root, monkeypatch):
     _write_transcript(tmp_root, "sg3")
 

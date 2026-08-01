@@ -65,6 +65,29 @@ def tem_trabalho(job_dir: Path) -> bool:
     )
 
 
+def _tem_conteudo_lista(path: Path) -> bool:
+    """Se *path* existe e guarda uma lista JSON não vazia.
+
+    overlays.json e suggestions.json podem existir vazios — passar pelo passo
+    Textos sem escrever nada grava `[]` (ver stage_recipe/o editor de
+    overlays). "Existe" sozinho não é "tem conteúdo perdível": a flag
+    baseada só em existência gerava aviso de perda para um projeto que não
+    tem nada a perder ali. Arquivo ilegível ou com um JSON que não é lista
+    conta como True — na dúvida, avisar é o lado seguro (mantém o
+    comportamento de antes desta função existir).
+    """
+    if not path.exists():
+        return False
+    try:
+        data = load_json(path)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("lista ilegível em %s, contando como 'tem conteúdo': %s", path, e)
+        return True
+    if not isinstance(data, list):
+        return True
+    return len(data) > 0
+
+
 def job_summary(job_dir: Path, input_root: Path, output_root: Path) -> JobSummary | None:
     """Resumo de um projeto, ou None se o diretório não for um job.
 
@@ -104,8 +127,8 @@ def job_summary(job_dir: Path, input_root: Path, output_root: Path) -> JobSummar
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
-        has_overlays=(job_dir / "overlays.json").exists(),
-        has_suggestions=(job_dir / "suggestions.json").exists(),
+        has_overlays=_tem_conteudo_lista(job_dir / "overlays.json"),
+        has_suggestions=_tem_conteudo_lista(job_dir / "suggestions.json"),
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=source.stat().st_size if source.exists() else 0,
@@ -216,8 +239,8 @@ def job_summary_minimo(job_dir: Path, input_root: Path, output_root: Path) -> Jo
         has_transcript=(job_dir / "transcript.json").exists(),
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
-        has_overlays=(job_dir / "overlays.json").exists(),
-        has_suggestions=(job_dir / "suggestions.json").exists(),
+        has_overlays=_tem_conteudo_lista(job_dir / "overlays.json"),
+        has_suggestions=_tem_conteudo_lista(job_dir / "suggestions.json"),
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=_tamanho_seguro(source) if has_source else 0,
@@ -417,8 +440,17 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
     apenas consulta pode criar o diretório do job — mesmo raciocínio de
     job_summary. Quem precisa do diretório/arquivo criados chama init_job
     separadamente (create_job, update_config etc. já fazem isso).
+
+    Levanta ProjetoNaoEncontradoError se o diretório do job não existe: um
+    slug digitado errado (ou obsoleto no localStorage do front) não pode
+    receber um estado default confiante — as rotas de leitura (`GET
+    /jobs/{slug}`, `POST /cut`, `POST /suggest`) traduzem isso para 404.
+    Rotas que chamam get_state depois de init_job/update_* (diretório já
+    garantido) nunca veem esta exceção na prática.
     """
     job_dir = Path(jobs_root) / slug
+    if not job_dir.is_dir():
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     probe = None
     if (job_dir / "probe.json").exists():
         d = load_json(job_dir / "probe.json")
@@ -442,8 +474,8 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_hook=(job_dir / "hook.json").exists(),
         has_recipe=(job_dir / "edit-recipe.json").exists(),
         has_source=(job_dir / "source.mp4").exists(),
-        has_overlays=(job_dir / "overlays.json").exists(),
-        has_suggestions=(job_dir / "suggestions.json").exists(),
+        has_overlays=_tem_conteudo_lista(job_dir / "overlays.json"),
+        has_suggestions=_tem_conteudo_lista(job_dir / "suggestions.json"),
         has_render_16x9=False,  # preenchido pelo caller com OUTPUT_ROOT
         has_render_9x16=False,
     )
@@ -468,6 +500,8 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
 
 
 def update_config(slug: str, jobs_root: Path, params: CutParams) -> None:
+    if _job_dir_seguro(slug, jobs_root) is None:
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     init_job(jobs_root, slug)
     cfg_path = Path(jobs_root) / slug / "job.config.json"
     cfg = load_json(cfg_path)
@@ -493,6 +527,8 @@ def update_hook_card_frames(slug: str, jobs_root: Path, frames: int) -> None:
 
 
 def update_caption_style(slug: str, jobs_root: Path, style) -> None:
+    if _job_dir_seguro(slug, jobs_root) is None:
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     job = init_job(jobs_root, slug)
     job.config.caption_font_size = style.fontSize
     job.config.caption_bottom = style.bottom
@@ -528,6 +564,8 @@ def update_title(slug: str, jobs_root: Path, title: str) -> None:
 
 
 def update_brand_kit(slug: str, jobs_root: Path, kit_slug: str) -> None:
+    if _job_dir_seguro(slug, jobs_root) is None:
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     job = init_job(jobs_root, slug)
     job.config.brand_kit_slug = kit_slug
     write_json(job.dir / "job.config.json", asdict(job.config))
@@ -552,11 +590,19 @@ def update_orientation(slug: str, jobs_root: Path, orientation: str) -> None:
     escolhe a composição pelo estado atual do job. Mesmo padrão de
     `pipeline/stages.py::stage_refine`, que apaga os artefatos derivados quando
     a origem muda.
+
+    init_job roda antes do primeiro get_state de propósito: esta rota cria o
+    projeto implicitamente (fora do escopo do 404 de slug inexistente), e
+    get_state agora levanta ProjetoNaoEncontradoError para um diretório que
+    ainda não existe — chamá-lo antes de init_job quebraria justo o caso
+    comum de um slug novo.
     """
     if orientation != "" and orientation not in FRAME_SIZES:
         raise ValueError(f"orientação inválida: {orientation!r}")
-    before = get_state(slug, jobs_root).orientation
+    if _job_dir_seguro(slug, jobs_root) is None:
+        raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
     job = init_job(jobs_root, slug)
+    before = get_state(slug, jobs_root).orientation
     job.config.orientation = orientation
     write_json(job.dir / "job.config.json", asdict(job.config))
     depois = get_state(slug, jobs_root).orientation

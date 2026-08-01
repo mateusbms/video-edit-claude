@@ -33,9 +33,11 @@ def test_get_job_state_after_upload(client, sample_mp4):
 def test_get_job_inexistente_nao_cria_diretorio(client, tmp_root):
     """Consultar um slug que nunca foi enviado não pode ressuscitá-lo no
     disco — um slug obsoleto no localStorage do front não pode fazer o
-    projeto reaparecer na lista só por ter sido consultado."""
+    projeto reaparecer na lista só por ter sido consultado. E não pode
+    devolver um estado default confiante: vira 404 (pendência 4 do
+    handoff), como os DELETEs e o PUT /title."""
     r = client.get("/api/jobs/inexistente")
-    assert r.status_code == 200
+    assert r.status_code == 404
     assert not (tmp_root / "jobs" / "inexistente").exists()
 
 
@@ -135,6 +137,21 @@ def test_caption_style_persists(client, sample_mp4):
     s = client.get("/api/jobs/cs1").json()
     assert s["captionStyle"]["fontSize"] == 72
     assert s["captionStyle"]["fontFamily"] == "Poppins"
+
+
+def test_caption_style_slug_com_travessia_responde_404(client, tmp_root):
+    """update_caption_style passa a montar o caminho via _job_dir_seguro
+    (pendência 4 do handoff): um slug de travessia vira 404."""
+    r = client.put("/api/jobs/%2e%2e/caption-style",
+                   json={"fontSize": 72, "bottom": 200, "color": "",
+                         "highlightColor": "", "fontFamily": ""})
+    assert r.status_code == 404
+
+
+def test_brand_kit_slug_com_travessia_responde_404(client, tmp_root):
+    """Mesmo guard central para update_brand_kit."""
+    r = client.put("/api/jobs/%2e%2e/brand-kit", json={"slug": "acme"})
+    assert r.status_code == 404
 
 
 def test_put_and_get_overlays_roundtrip(client, sample_mp4):
