@@ -228,7 +228,9 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <Slider label="Silêncio mínimo (s)" value={params.min_silence}
         min={0.2} max={2.0} step={0.1} format={(n) => `${n.toFixed(1)} s`}
         onChange={(n) => setParams({ ...params, min_silence: n })} />
-      <button onClick={pedirParaCortar} disabled={busy || !temSource || carregandoJob}
+      {/* refining na guarda: corte e refino reescrevem o mesmo trimmed.mp4 —
+          um de cada vez */}
+      <button onClick={pedirParaCortar} disabled={busy || !temSource || carregandoJob || refining}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
         {busy ? "Cortando..." : "Detectar pausas"}
       </button>
@@ -333,7 +335,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                       style={{ left: `${(r.start / dur) * 100}%`, width: `${((r.end - r.start) / dur) * 100}%` }} />;
                   })}
                 </div>
-                <button onClick={pedirParaAplicar} disabled={refining || carregandoJob}
+                {/* busy na guarda é cinto e suspensório: onCut zera o result e
+                    este painel desmonta durante o corte — mas se isso mudar um
+                    dia, o botão não pode disparar um refino concorrente */}
+                <button onClick={pedirParaAplicar} disabled={refining || carregandoJob || busy}
                   className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
                   {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
                 </button>

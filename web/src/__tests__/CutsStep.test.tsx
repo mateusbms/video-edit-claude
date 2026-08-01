@@ -529,3 +529,49 @@ describe("CutsStep — aviso antes do Detectar pausas destruir trabalho", () => 
       expect(screen.queryByRole("button", { name: /remover trecho 1/i })).not.toBeInTheDocument());
   });
 });
+
+describe("CutsStep — um corte por vez", () => {
+  // corte e refino reescrevem o mesmo trimmed.mp4 no servidor; disparar os
+  // dois ao mesmo tempo é corrida de escrita. Cada botão trava enquanto o
+  // outro trabalha.
+  async function montarComTrechoMarcado() {
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await screen.findByText(/trechos mantidos/i);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    video.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
+    video.currentTime = 3;
+    fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /aplicar cortes/i })).not.toBeDisabled());
+  }
+
+  it("com refino em andamento, Detectar pausas fica desabilitado", async () => {
+    await montarComTrechoMarcado();
+    // refino pendurado: nunca resolve, refining fica true
+    streamSSE.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /detectar pausas/i })).toBeDisabled());
+  });
+
+  it("com corte em andamento, não há Aplicar cortes para clicar", async () => {
+    // onCut zera o result no início, o que desmonta o painel de cortes
+    // manuais — este teste trava esse invariante: se o setResult(null) sair
+    // um dia, o botão precisa passar a ser desabilitado por busy
+    await montarComTrechoMarcado();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled());
+    // corte pendurado: nunca resolve, busy fica true
+    streamSSE.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /aplicar cortes/i })).not.toBeInTheDocument());
+  });
+});
