@@ -82,10 +82,10 @@ def test_job_problematico_nao_derruba_a_listagem(client, tmp_root, monkeypatch):
 
     original = jobs_mod.job_summary
 
-    def instavel(job_dir, output_root):
+    def instavel(job_dir, input_root, output_root):
         if job_dir.name == "quebrado":
             raise FileNotFoundError("arquivo sumiu durante a varredura")
-        return original(job_dir, output_root)
+        return original(job_dir, input_root, output_root)
 
     monkeypatch.setattr(jobs_mod, "job_summary", instavel)
 
@@ -146,6 +146,31 @@ def test_diretorio_vazio_continua_fora_da_lista(client, tmp_root):
     d.mkdir(parents=True)
     (d / "job.config.json").write_text("{{{", encoding="utf-8")
     assert client.get("/api/jobs").json() == []
+
+
+def test_bytes_parts_soma_so_as_partes_do_slug(client, tmp_root):
+    """Pendência 3 do handoff: as cópias de upload em input/<slug>-part* não
+    entravam na contagem de tamanho — bytes_total subdeclarava o projeto e o
+    "Libera X MB" do diálogo de liberar espaço subestimava o ganho. Aqui
+    conta só as do próprio slug, não as de um vizinho com prefixo parecido."""
+    _criar_job(tmp_root, "A1", {"source.mp4": b"x" * 100})
+    tamanho_config = len(json.dumps({"orientation": "9x16"}).encode("utf-8"))
+    partes_root = tmp_root / "input"
+    (partes_root / "A1-part0.mp4").write_bytes(b"p" * 30)
+    (partes_root / "A1-part1.mp4").write_bytes(b"q" * 20)
+    (partes_root / "A1-parte2-part0.mp4").write_bytes(b"nao contar" * 10)
+
+    item = client.get("/api/jobs").json()[0]
+    assert item["bytes_parts"] == 50
+    assert item["bytes_total"] == 100 + 50 + tamanho_config
+
+
+def test_sem_partes_bytes_parts_e_zero(client, tmp_root):
+    _criar_job(tmp_root, "A1", {"source.mp4": b"x" * 100})
+    tamanho_config = len(json.dumps({"orientation": "9x16"}).encode("utf-8"))
+    item = client.get("/api/jobs").json()[0]
+    assert item["bytes_parts"] == 0
+    assert item["bytes_total"] == 100 + tamanho_config
 
 
 def test_config_ilegivel_reporta_tamanhos_reais_nao_zerados(client, tmp_root):

@@ -47,8 +47,8 @@ def _roots() -> tuple[Path, Path, Path]:
 @router.get("/jobs")
 def read_jobs() -> list[JobSummary]:
     """Projetos salvos, para a tela de lista."""
-    jobs_root, _, output_root = _roots()
-    return list_jobs(jobs_root, output_root)
+    jobs_root, input_root, output_root = _roots()
+    return list_jobs(jobs_root, input_root, output_root)
 
 
 @router.post("/jobs")
@@ -81,7 +81,10 @@ async def create_job(
             # fallback do except é um resumo mínimo com o que já se sabe (o
             # slug), não None.
             try:
-                existente = job_summary(job_dir, output_root) or job_summary_minimo(job_dir, output_root)
+                existente = (
+                    job_summary(job_dir, input_root, output_root)
+                    or job_summary_minimo(job_dir, input_root, output_root)
+                )
             except Exception:
                 existente = JobSummary(slug=slug)
             if existente is not None:
@@ -128,10 +131,11 @@ def remove_job(slug: str):
 
 @router.delete("/jobs/{slug}/source")
 def remove_source(slug: str):
-    """Apaga só o vídeo original, para liberar espaço."""
-    jobs_root, *_ = _roots()
+    """Apaga o vídeo original e as partes de upload que o geraram, para
+    liberar espaço."""
+    jobs_root, input_root, _ = _roots()
     try:
-        apagou = delete_source(slug, jobs_root)
+        apagou = delete_source(slug, jobs_root, input_root)
     except ProjetoNaoEncontradoError:
         raise HTTPException(status_code=404, detail="projeto não encontrado")
     except ArquivoEmUsoError as e:

@@ -114,6 +114,77 @@ def test_liberar_espaco_de_projeto_inexistente_diz_que_o_projeto_nao_existe(clie
     assert "vídeo original" not in r.json()["detail"]
 
 
+def test_liberar_espaco_pelo_http_apaga_as_partes_de_upload(client, tmp_root):
+    """Pendência 3 do handoff: "Liberar espaço" apagava só o source.mp4,
+    deixando as cópias de upload (input/<slug>-part*) como órfãs invisíveis —
+    mesmo achado N4 que já valia para excluir o projeto inteiro, mas que
+    ninguém tinha fechado para este outro caminho de apagar."""
+    _criar_job(tmp_root, "d11", {"source.mp4": b"x" * 100, "trimmed.mp4": b"y"})
+    partes_root = tmp_root / "input"
+    (partes_root / "d11-part0.mp4").write_bytes(b"parte0")
+    (partes_root / "outro-part0.mp4").write_bytes(b"nao mexer")
+
+    r = client.delete("/api/jobs/d11/source")
+    assert r.status_code == 200
+    assert not (partes_root / "d11-part0.mp4").exists()
+    assert (partes_root / "outro-part0.mp4").exists()
+
+
+def test_liberar_espaco_nao_apaga_partes_de_projeto_com_prefixo_parecido(tmp_path):
+    """Simétrico do achado A (já fechado para delete_job): liberar espaço do
+    slug "A1" não pode levar junto as partes de "A1-parte2" ou "A1-part2" —
+    o casamento exato (\\d+ logo após "-part", "." antes da extensão) é o
+    mesmo `_padrao_partes` usado por delete_job."""
+    from api.jobs import delete_source
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    projeto = jobs_root / "A1"
+    projeto.mkdir()
+    (projeto / "job.config.json").write_text("{}", encoding="utf-8")
+    (projeto / "source.mp4").write_bytes(b"video de A1")
+
+    propria = input_root / "A1-part0.mp4"
+    propria.write_bytes(b"parte de A1")
+    vizinha1 = input_root / "A1-parte2-part0.mp4"
+    vizinha1.write_bytes(b"pertence ao projeto A1-parte2")
+    vizinha2 = input_root / "A1-part2-part1.mov"
+    vizinha2.write_bytes(b"pertence ao projeto A1-part2")
+
+    assert delete_source("A1", jobs_root, input_root) is True
+    assert not propria.exists()
+    assert vizinha1.exists(), "liberar A1 não pode levar a parte de A1-parte2 junto"
+    assert vizinha2.exists(), "liberar A1 não pode levar a parte de A1-part2 junto"
+
+
+def test_liberar_espaco_sem_source_devolve_false_mas_apaga_partes_orfas(tmp_path):
+    """Roda mesmo quando o source já não está lá — o cenário que mais importa
+    na prática: projetos que já usaram "Liberar espaço" antes desta correção
+    ficaram com partes órfãs em input/ que nem excluir nem liberar de novo
+    (sem source, sempre 404) jamais tocavam. O contrato de retorno não muda:
+    False continua significando só "não havia source para apagar"."""
+    from api.jobs import delete_source
+
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    projeto = jobs_root / "d12"
+    projeto.mkdir()
+    (projeto / "job.config.json").write_text("{}", encoding="utf-8")
+    (projeto / "trimmed.mp4").write_bytes(b"y")  # sem source.mp4
+
+    orfa = input_root / "d12-part0.mp4"
+    orfa.write_bytes(b"parte orfa de um liberar espaco anterior")
+
+    assert delete_source("d12", jobs_root, input_root) is False
+    assert not orfa.exists()
+
+
 def test_slug_com_travessia_de_caminho_e_recusado(client, tmp_root):
     """`%2e%2e` decodifica para o segmento literal ".." sem introduzir barra
     nenhuma, então casa normalmente com `{slug}` e chega até a rota — ao
@@ -312,12 +383,13 @@ def test_delete_source_recusa_slug_que_tenta_escapar_de_jobs_root(tmp_path):
 
     jobs_root = tmp_path / "jobs"
     jobs_root.mkdir()
+    input_root = tmp_path / "input"
     vizinho = jobs_root.parent / "vizinho-fora-de-jobs"
     vizinho.mkdir()
     (vizinho / "source.mp4").write_bytes(b"nao pode sumir")
 
     with pytest.raises(ProjetoNaoEncontradoError):
-        delete_source("../vizinho-fora-de-jobs", jobs_root)
+        delete_source("../vizinho-fora-de-jobs", jobs_root, input_root)
     assert (vizinho / "source.mp4").exists()
 
 

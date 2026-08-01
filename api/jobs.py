@@ -65,7 +65,7 @@ def tem_trabalho(job_dir: Path) -> bool:
     )
 
 
-def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
+def job_summary(job_dir: Path, input_root: Path, output_root: Path) -> JobSummary | None:
     """Resumo de um projeto, ou None se o diretório não for um job.
 
     Lê o job.config.json direto em vez de chamar init_job: init_job cria o
@@ -93,6 +93,7 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
 
     slug = job_dir.name
     renders = [output_root / f"{slug}-16x9.mp4", output_root / f"{slug}-9x16.mp4"]
+    bytes_parts = _bytes_partes(slug, input_root)
     return JobSummary(
         slug=slug,
         title=cfg.get("title", ""),
@@ -108,8 +109,9 @@ def job_summary(job_dir: Path, output_root: Path) -> JobSummary | None:
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=source.stat().st_size if source.exists() else 0,
-        bytes_total=sum(p.stat().st_size for p in arquivos),
+        bytes_total=sum(p.stat().st_size for p in arquivos) + bytes_parts,
         bytes_render=sum(p.stat().st_size for p in renders if p.exists()),
+        bytes_parts=bytes_parts,
     )
 
 
@@ -143,7 +145,30 @@ def _mtime_seguro(p: Path) -> float:
         return 0.0
 
 
-def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
+def _bytes_partes(slug: str, input_root: Path) -> int:
+    """Soma o tamanho das cópias de upload do slug em input/ (ver
+    `_padrao_partes`).
+
+    "Liberar espaço" apaga o source, mas as partes que o geraram (outra cópia
+    do vídeo em resolução cheia) continuavam de fora da contagem — o "Libera X
+    MB" do diálogo subestimava o que realmente some, e bytes_total da lista
+    subdeclarava o tamanho real do projeto. Melhor-esforço como o resto deste
+    módulo: iterdir protegido (OSError → 0 + warning) e `_tamanho_seguro` por
+    arquivo.
+    """
+    root = Path(input_root)
+    if not root.is_dir():
+        return 0
+    padrao = _padrao_partes(slug)
+    try:
+        candidatos = [p for p in root.iterdir() if p.is_file() and padrao.fullmatch(p.name)]
+    except OSError as e:
+        logger.warning("iterdir falhou em %s, bytes_parts contado como 0: %s", root, e)
+        return 0
+    return sum(_tamanho_seguro(p) for p in candidatos)
+
+
+def job_summary_minimo(job_dir: Path, input_root: Path, output_root: Path) -> JobSummary | None:
     """Resumo mínimo de um job cujo job.config.json está ausente ou não pôde
     ser lido.
 
@@ -182,6 +207,7 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
     has_source = source.exists()
     slug = job_dir.name
     renders = [output_root / f"{slug}-16x9.mp4", output_root / f"{slug}-9x16.mp4"]
+    bytes_parts = _bytes_partes(slug, input_root)
     return JobSummary(
         slug=slug,
         updated_at=max((_mtime_seguro(p) for p in arquivos), default=0.0),
@@ -195,12 +221,13 @@ def job_summary_minimo(job_dir: Path, output_root: Path) -> JobSummary | None:
         has_render_16x9=(output_root / f"{slug}-16x9.mp4").exists(),
         has_render_9x16=(output_root / f"{slug}-9x16.mp4").exists(),
         bytes_source=_tamanho_seguro(source) if has_source else 0,
-        bytes_total=sum(_tamanho_seguro(p) for p in arquivos),
+        bytes_total=sum(_tamanho_seguro(p) for p in arquivos) + bytes_parts,
         bytes_render=sum(_tamanho_seguro(p) for p in renders if p.exists()),
+        bytes_parts=bytes_parts,
     )
 
 
-def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
+def list_jobs(jobs_root: Path, input_root: Path, output_root: Path) -> list[JobSummary]:
     """Projetos existentes, do mais recente para o mais antigo.
 
     Cada resumo é montado isoladamente: um render ou um refine concorrente
@@ -216,7 +243,10 @@ def list_jobs(jobs_root: Path, output_root: Path) -> list[JobSummary]:
         try:
             # config ilegível cai no resumo mínimo: um projeto invisível na
             # lista não pode ser apagado, e ele ainda bloqueia o upload com 409
-            s = job_summary(d, Path(output_root)) or job_summary_minimo(d, Path(output_root))
+            s = (
+                job_summary(d, Path(input_root), Path(output_root))
+                or job_summary_minimo(d, Path(input_root), Path(output_root))
+            )
         except Exception:
             continue
         if s:
@@ -293,33 +323,39 @@ def delete_job(slug: str, jobs_root: Path, input_root: Path) -> bool:
     return True
 
 
+def _padrao_partes(slug: str) -> re.Pattern:
+    """Padrão exato de input/<slug>-part<N>.<ext> — as cópias que create_job
+    grava de cada arquivo enviado (`f"{slug}-part{i}{suffix}"`) antes de
+    concatená-las em source.mp4.
+
+    Fonte única para `_apagar_partes_de_upload` e `_bytes_partes`: casamento
+    exato via regex, não um glob com curinga. O slug é texto livre digitado
+    pelo usuário, e um padrão como "{slug}-part*" casaria também
+    "A1-parte2-part0.mp4" e "A1-part2-part1.mov" para o slug "A1" — as partes
+    de projetos vizinhos com nome parecido ("parte" é palavra provável num
+    nome em português). O `\\d+` logo após "-part" e o `\\.` exigido depois
+    dos dígitos fecham as duas aberturas: nenhum arquivo fora do formato
+    exato que create_job grava casa.
+    """
+    return re.compile(re.escape(slug) + r"-part\d+\.[^.]+")
+
+
 def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
-    """Apaga input/<slug>-part<N>.<ext> — as cópias que create_job grava de
-    cada arquivo enviado (`f"{slug}-part{i}{suffix}"`) antes de concatená-las
-    em source.mp4.
+    """Apaga input/<slug>-part<N>.<ext> (ver `_padrao_partes`).
 
     Sem isto, cada projeto excluído deixava cópias invisíveis do vídeo
     original em input/, numa tela cuja razão de existir é o disco não crescer
     sem limite: nem excluir nem liberar espaço nunca as apagava.
 
-    Casamento exato via regex sobre `iterdir()`, não um glob com curinga: o
-    slug é texto livre digitado pelo usuário, e um padrão como
-    "{slug}-part*" apaga também "A1-parte2-part0.mp4" e "A1-part2-part1.mov"
-    ao excluir o slug "A1" — as partes de projetos vizinhos com nome
-    parecido ("parte" é palavra provável num nome em português). O `\\d+`
-    logo após "-part" e o `\\.` exigido depois dos dígitos fecham as duas
-    aberturas: nenhum arquivo fora do formato exato que create_job grava
-    casa.
-
-    Melhor-esforço: o diretório do job já foi apagado quando isto roda, então
-    uma parte travada (arquivo em uso, por exemplo) não pode virar um 409 num
-    delete que já aconteceu — e não pode abandonar as partes restantes por
-    causa de uma que falhou.
+    Melhor-esforço: o diretório do job já foi apagado (ou o source já não
+    existe mais) quando isto roda, então uma parte travada (arquivo em uso,
+    por exemplo) não pode virar um 409 numa operação que já aconteceu — e não
+    pode abandonar as partes restantes por causa de uma que falhou.
     """
     root = Path(input_root)
     if not root.is_dir():
         return
-    padrao = re.compile(re.escape(slug) + r"-part\d+\.[^.]+")
+    padrao = _padrao_partes(slug)
     try:
         candidatos = [p for p in root.iterdir() if p.is_file() and padrao.fullmatch(p.name)]
     except OSError as e:
@@ -333,22 +369,32 @@ def _apagar_partes_de_upload(slug: str, input_root: Path) -> None:
             continue
 
 
-def delete_source(slug: str, jobs_root: Path) -> bool:
-    """Apaga só o source.mp4, mantendo corte, transcrição e textos.
+def delete_source(slug: str, jobs_root: Path, input_root: Path) -> bool:
+    """Apaga o source.mp4 e as partes de upload que o geraram, mantendo
+    corte, transcrição e textos.
 
     O que se perde: refazer o corte automático (stage_cut é o único leitor do
-    source) e o master em resolução original. O que continua: transcrever,
-    editar textos, cortes manuais e renderizar, que operam sobre o trimmed.
+    source), o master em resolução original e as cópias de upload em input/
+    (mesma outra cópia em resolução cheia, ver `_apagar_partes_de_upload`). O
+    que continua: transcrever, editar textos, cortes manuais e renderizar,
+    que operam sobre o trimmed.
+
+    A limpeza das partes roda sempre que o projeto existe — inclusive quando
+    o source já não está lá, ou quando o unlink do source falha — para varrer
+    partes órfãs de projetos liberados antes desta função existir. É
+    melhor-esforço e não muda o contrato de retorno: True continua
+    significando só "apagou o source".
 
     Levanta ProjetoNaoEncontradoError se o diretório do projeto não existir —
     distinto de "existe mas não tem source", que devolve False. Levanta
-    ArquivoEmUsoError se o unlink esbarrar num arquivo aberto por outro
-    processo. Um FileNotFoundError (dois DELETEs concorrentes no mesmo slug)
-    não é isso: vira o mesmo False de "não havia o que apagar".
+    ArquivoEmUsoError se o unlink do source esbarrar num arquivo aberto por
+    outro processo. Um FileNotFoundError (dois DELETEs concorrentes no mesmo
+    slug) não é isso: vira o mesmo False de "não havia o que apagar".
     """
     alvo = _job_dir_seguro(slug, jobs_root)
     if alvo is None or not alvo.is_dir():
         raise ProjetoNaoEncontradoError(f"projeto {slug!r} não encontrado")
+    _apagar_partes_de_upload(alvo.name, input_root)
     source = alvo / "source.mp4"
     if not source.exists():
         return False

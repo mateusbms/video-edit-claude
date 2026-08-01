@@ -101,6 +101,8 @@ export type JobSummary = {
   bytes_total: number;
   // renders exportados; sobrevivem a apagar o projeto
   bytes_render: number;
+  // cópias de upload do slug em input/, já somadas em bytes_total
+  bytes_parts: number;
 };
 
 export type SSEEvent =

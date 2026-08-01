@@ -192,6 +192,10 @@ class JobSummary(BaseModel):
     # renders exportados em output/. Ficam separados de bytes_total porque
     # sobrevivem a apagar o projeto — a tela precisa dizer isso ao confirmar.
     bytes_render: int = 0
+    # cópias de upload do slug em input/ (input/<slug>-part<N>.<ext>), já
+    # somadas em bytes_total. "Liberar espaço" também as apaga — o diálogo
+    # mostra bytes_source + bytes_parts para não subestimar o que libera.
+    bytes_parts: int = 0
 
 
 ScriptKey = Literal["s01","s02","s03","s04","s05","s06","s06b","s07","s08","s09","s10"]

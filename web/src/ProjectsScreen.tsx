@@ -167,7 +167,15 @@ export const ProjectsScreen: React.FC<{
       await deleteSource(j.slug);
       setJobs((l) => (l ?? []).map((x) => (
         x.slug === j.slug
-          ? { ...x, has_source: false, bytes_source: 0, bytes_total: x.bytes_total - x.bytes_source }
+          ? {
+              ...x,
+              has_source: false,
+              bytes_source: 0,
+              bytes_parts: 0,
+              // "Liberar espaço" agora apaga o source E as partes de upload
+              // (input/<slug>-part*) — os dois somem de bytes_total juntos.
+              bytes_total: x.bytes_total - x.bytes_source - x.bytes_parts,
+            }
           : x
       )));
     } catch {
@@ -307,7 +315,8 @@ export const ProjectsScreen: React.FC<{
               <div role="alertdialog" aria-label={`confirmar liberar espaço de ${j.slug}`}
                    className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
                 <p className="text-amber-200">
-                  Libera <strong>{tamanho(j.bytes_source)}</strong> apagando o vídeo original.
+                  Libera <strong>{tamanho(j.bytes_source + j.bytes_parts)}</strong> apagando o
+                  vídeo original{j.bytes_parts > 0 && " e as cópias do upload"}.
                   Você continua podendo transcrever, fazer cortes manuais, editar textos,
                   legendas e renderizar — mas
                   <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a

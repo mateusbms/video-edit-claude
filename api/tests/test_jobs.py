@@ -71,6 +71,7 @@ def test_job_summary_minimo_nao_levanta_quando_um_stat_racha_depois_da_listagem(
     job_dir.mkdir(parents=True)
     (job_dir / "transcript.json").write_text("[]", encoding="utf-8")
     (job_dir / "trimmed.refined.mp4").write_bytes(b"y")
+    input_root = tmp_path / "input"
     output_root = tmp_path / "output"
     output_root.mkdir()
 
@@ -86,7 +87,7 @@ def test_job_summary_minimo_nao_levanta_quando_um_stat_racha_depois_da_listagem(
 
     monkeypatch.setattr(Path, "stat", _stat_racha_a_partir_da_segunda_chamada)
 
-    resumo = job_summary_minimo(job_dir, output_root)
+    resumo = job_summary_minimo(job_dir, input_root, output_root)
 
     assert resumo is not None
     assert resumo.slug == "A1"

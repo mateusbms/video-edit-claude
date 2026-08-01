@@ -18,7 +18,7 @@ const projeto = {
   has_source: true, has_trimmed: true, has_transcript: true,
   has_hook: false, has_recipe: false, has_overlays: false, has_suggestions: false,
   has_render_16x9: false, has_render_9x16: true,
-  bytes_source: 379_205_809, bytes_total: 395_000_000, bytes_render: 0,
+  bytes_source: 379_205_809, bytes_total: 395_000_000, bytes_render: 0, bytes_parts: 0,
 };
 
 describe("ProjectsScreen", () => {
@@ -349,6 +349,46 @@ describe("ProjectsScreen — liberar espaço", () => {
     const aviso = await screen.findByRole("alertdialog", { name: /confirmar liberar espaço de A1/i });
     expect(aviso.textContent).toMatch(/transcrever/i);
     expect(aviso.textContent).toMatch(/cortes manuais/i);
+  });
+
+  it("com partes de upload, o diálogo mostra a soma e menciona as cópias do upload", async () => {
+    // Pendência 3 do handoff: as partes em input/<slug>-part* também somem ao
+    // liberar espaço, então o "Libera X MB" precisa incluí-las — sem isso o
+    // diálogo subestima o que de fato é liberado.
+    const api = await import("../api");
+    const comPartes = { ...projeto, bytes_source: 100_000_000, bytes_parts: 20_000_000 };
+    (api.listJobs as any).mockResolvedValueOnce([comPartes]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar liberar espaço de A1/i });
+    expect(aviso.textContent).toMatch(/114(,|\.)4 MB/);
+    expect(aviso.textContent).toMatch(/cópias do upload/i);
+  });
+
+  it("sem partes de upload, o diálogo não menciona as cópias do upload", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([{ ...projeto, bytes_parts: 0 }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar liberar espaço de A1/i });
+    expect(aviso.textContent).not.toMatch(/cópias do upload/i);
+  });
+
+  it("confirmar zera source e partes, e ajusta o tamanho total exibido", async () => {
+    const api = await import("../api");
+    const comPartes = {
+      ...projeto,
+      bytes_source: 100_000_000,
+      bytes_parts: 20_000_000,
+      bytes_total: 150_000_000,
+    };
+    (api.listJobs as any).mockResolvedValueOnce([comPartes]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /liberar espaço de A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^confirmar$/i }));
+    await waitFor(() => expect(api.deleteSource).toHaveBeenCalledWith("A1"));
+    // 150_000_000 - 100_000_000 - 20_000_000 = 30_000_000 bytes ~= 28.6 MB
+    expect(await screen.findByText(/28(,|\.)6 MB/)).toBeInTheDocument();
   });
 });
 

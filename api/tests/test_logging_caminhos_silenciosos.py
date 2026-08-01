@@ -80,11 +80,12 @@ def test_job_summary_com_config_corrompido_devolve_none_e_loga(tmp_path, caplog)
     job_dir.mkdir(parents=True)
     cfg_path = job_dir / "job.config.json"
     cfg_path.write_text("{{{ isto não é json", encoding="utf-8")
+    input_root = tmp_path / "input"
     output_root = tmp_path / "output"
     output_root.mkdir()
 
     with caplog.at_level(logging.WARNING, logger="api.jobs"):
-        assert job_summary(job_dir, output_root) is None
+        assert job_summary(job_dir, input_root, output_root) is None
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1

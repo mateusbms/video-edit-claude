@@ -161,8 +161,8 @@ def test_projeto_apagado_entre_a_checagem_e_o_resumo_nao_derruba_o_upload(
     import api.routes as routes_mod
 
     _criar_job_com_trabalho(tmp_root, "A1")
-    monkeypatch.setattr(routes_mod, "job_summary", lambda job_dir, output_root: None)
-    monkeypatch.setattr(routes_mod, "job_summary_minimo", lambda job_dir, output_root: None)
+    monkeypatch.setattr(routes_mod, "job_summary", lambda job_dir, input_root, output_root: None)
+    monkeypatch.setattr(routes_mod, "job_summary_minimo", lambda job_dir, input_root, output_root: None)
 
     r = _upload(client, "A1", sample_mp4)
 
