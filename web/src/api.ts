@@ -27,12 +27,13 @@ export async function listJobs(): Promise<JobSummary[]> {
 }
 
 export async function uploadJob(
-  files: File[], slug: string, overwrite = false,
+  files: File[], slug: string, overwrite = false, papel: "normal" | "matriz" = "normal",
 ): Promise<{ slug: string; probe: any }> {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
   fd.append("slug", slug);
   fd.append("overwrite", String(overwrite));
+  fd.append("papel", papel);
   const r = await fetch(`${BASE}/jobs`, { method: "POST", body: fd });
   // 409 não é erro de rede: é a pergunta "sobrescrever?" e vem com o projeto
   // existente no corpo, para a tela montar o diálogo sem outra chamada.
@@ -151,6 +152,19 @@ export async function generateSuggestions(slug: string): Promise<Suggestion[]> {
 
 export async function runRecipe(slug: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/recipe`, { method: "POST" }));
+}
+
+// Cria uma variação do projeto matriz `slug` a partir de um novo clipe de
+// hook: o backend funde hook+corpo, desloca transcrição/overlays e devolve
+// (via SSE) o novo projeto pronto para abrir no passo do texto do hook.
+export function createVariant(
+  slug: string, file: File, novoSlug: string,
+  handlers: Parameters<typeof streamSSE>[2],
+): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("novo_slug", novoSlug);
+  return streamSSE(`${BASE}/jobs/${slug}/variants`, { method: "POST", body: fd }, handlers);
 }
 
 // o formato vem da orientação do job, não da query — GET /still não aceita mais `format`

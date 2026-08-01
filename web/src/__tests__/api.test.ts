@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseSSEChunk, getOverlays, putOverlays, generateSuggestions, streamSSE } from "../api";
+import {
+  parseSSEChunk, getOverlays, putOverlays, generateSuggestions, streamSSE, uploadJob, createVariant,
+} from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -60,6 +62,62 @@ describe("streamSSE", () => {
     )));
     await expect(streamSSE("/api/jobs/s1/cut", {}, {})).rejects.toThrow("SSE falhou (500)");
     vi.unstubAllGlobals();
+  });
+});
+
+describe("uploadJob", () => {
+  it("manda o papel quando informado", async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      return { ok: true, json: async () => ({ slug: "s1", probe: {} }) } as any;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["conteudo"], "a.mp4", { type: "video/mp4" });
+    await uploadJob([file], "s1", false, "matriz");
+    vi.unstubAllGlobals();
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe("/api/jobs");
+    const fd = calls[0].init.body as FormData;
+    expect(fd.get("slug")).toBe("s1");
+    expect(fd.get("papel")).toBe("matriz");
+  });
+
+  it("sem papel informado, manda 'normal' (default)", async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      return { ok: true, json: async () => ({ slug: "s1", probe: {} }) } as any;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["conteudo"], "a.mp4", { type: "video/mp4" });
+    await uploadJob([file], "s1");
+    vi.unstubAllGlobals();
+    const fd = calls[0].init.body as FormData;
+    expect(fd.get("papel")).toBe("normal");
+  });
+});
+
+describe("createVariant", () => {
+  it("posta multipart em /jobs/{slug}/variants via streamSSE com file e novo_slug", async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: any) => {
+      calls.push({ url, init });
+      return {
+        ok: true,
+        body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+      } as any;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["conteudo"], "hook.mp4", { type: "video/mp4" });
+    await createVariant("corpo", file, "corpo-v2", {});
+    vi.unstubAllGlobals();
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe("/api/jobs/corpo/variants");
+    expect(calls[0].init.method).toBe("POST");
+    const fd = calls[0].init.body as FormData;
+    expect(fd.get("file")).toBe(file);
+    expect(fd.get("novo_slug")).toBe("corpo-v2");
   });
 });
 

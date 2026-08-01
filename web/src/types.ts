@@ -77,6 +77,8 @@ export type JobState = {
   captionStyle?: CaptionStyle;
   captionStyleResolved?: CaptionStyle;
   brandKitSlug?: string;
+  papel: "normal" | "matriz";
+  origem_matriz: string;
 };
 
 // Espelho de api/models.py::JobSummary.
@@ -103,6 +105,8 @@ export type JobSummary = {
   bytes_render: number;
   // cópias de upload do slug em input/, já somadas em bytes_total
   bytes_parts: number;
+  papel: "normal" | "matriz";
+  origem_matriz: string;
 };
 
 export type SSEEvent =
