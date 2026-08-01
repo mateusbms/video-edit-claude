@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { listJobs, putTitle, deleteJob, deleteSource } from "./api";
+import { listJobs, putTitle, deleteJob, deleteSource, createVariant } from "./api";
 import type { JobSummary } from "./types";
 import { oQueSePerde, listarPerdas } from "./perda";
 import { useAlertDialog } from "./useAlertDialog";
+import { ProgressBar } from "./components/ProgressBar";
 
 const LABEL_FORMATO: Record<string, string> = {
   "16x9": "16:9",
   "9x16": "9:16",
+};
+
+// Passo "Hook" do wizard (RecordedWizard, Steps normal = [Upload, Cortes,
+// Transcrição, Hook, Textos, Render]) — variações nascem prontas até aqui e
+// abrem direto onde falta trabalho humano: o texto do hook.
+const HOOK_STEP = 3;
+
+/** Menor "<matriz>-h<N>" livre entre os slugs já existentes. */
+export const sugerirNomeVariacao = (matriz: string, existentes: string[]): string => {
+  for (let n = 1; ; n++) {
+    const cand = `${matriz}-h${n}`;
+    if (!existentes.includes(cand)) return cand;
+  }
 };
 
 /** Em que ponto do wizard o projeto parou, para a lista dar contexto. */
@@ -149,9 +163,84 @@ const ConfirmarLiberar: React.FC<{
   );
 };
 
+// Diálogo de criação de variação de hook (spec 2026-08-01) — mesmo padrão dos
+// outros: componente à parte para poder chamar useAlertDialog, que precisa
+// montar e desmontar junto com o próprio diálogo.
+const NovaVariacaoDialog: React.FC<{
+  matriz: JobSummary;
+  sugestao: string;                     // menor "<slug>-h<N>" livre, calculado pelo pai
+  onCriada: (slug: string) => void;     // pai chama onOpen(slug, HOOK_STEP)
+  onDesistir: () => void;
+}> = ({ matriz, sugestao, onCriada, onDesistir }) => {
+  const [nome, setNome] = useState(sugestao);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [criando, setCriando] = useState(false);
+  const [prog, setProg] = useState<{ n: number; total: number } | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir, criando);
+
+  const criar = async () => {
+    if (!arquivo || !nome.trim()) return;
+    setCriando(true); setErro(null);
+    try {
+      await createVariant(matriz.slug, arquivo, nome.trim(), {
+        progress: (d) => { if (d.n != null && d.total != null) setProg({ n: d.n, total: d.total }); },
+        done: (d) => onCriada(d.slug ?? nome.trim()),
+        error: (d) => setErro(d.detail ?? "erro ao criar a variação"),
+      });
+    } catch (e: any) { setErro(e.message); }
+    finally { setCriando(false); setProg(null); }
+  };
+
+  return (
+    <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`nova variação de ${matriz.slug}`}
+         className="rounded border border-indigo-800 bg-indigo-950/40 p-3 text-sm space-y-2">
+      <label className="block">
+        <span className="text-zinc-400">Clipe de hook</span>
+        <input
+          type="file" accept="video/*"
+          onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+          disabled={criando}
+          className="mt-1 block"
+        />
+      </label>
+      <label className="block">
+        <span className="text-zinc-400">Nome da variação</span>
+        <input
+          aria-label="nome da variação"
+          className="mt-1 block w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          disabled={criando}
+        />
+      </label>
+      {erro && <p className="text-red-400 text-sm">{erro}</p>}
+      {criando && prog && (
+        <ProgressBar label="Criando variação" n={Math.round(prog.n)} total={Math.round(prog.total)} />
+      )}
+      <div className="flex gap-2">
+        <button
+          onClick={criar}
+          disabled={!arquivo || !nome.trim() || criando}
+          className="px-3 py-1 bg-indigo-700 rounded disabled:opacity-50"
+        >
+          {criando ? "Criando..." : "Criar variação"}
+        </button>
+        <button
+          onClick={onDesistir}
+          disabled={criando}
+          className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
+        >
+          Desistir
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Uma linha por vez em modo de edição ou confirmação — duas confirmações
 // destrutivas abertas ao mesmo tempo é convite para clicar na errada.
-type Modo = { slug: string; tipo: "renomeando" | "excluindo" | "liberando" } | null;
+type Modo = { slug: string; tipo: "renomeando" | "excluindo" | "liberando" | "variando" } | null;
 
 export const ProjectsScreen: React.FC<{
   onOpen: (slug: string, step?: number) => void;
@@ -188,7 +277,7 @@ export const ProjectsScreen: React.FC<{
     return () => { vivo = false; };
   }, []);
 
-  type Tipo = "renomeando" | "excluindo" | "liberando";
+  type Tipo = "renomeando" | "excluindo" | "liberando" | "variando";
   const emModo = (j: JobSummary, tipo: Tipo) =>
     modo?.slug === j.slug && modo?.tipo === tipo;
   // Qualquer modo (renomear ou uma das confirmações) — usado para esconder a
@@ -313,7 +402,12 @@ export const ProjectsScreen: React.FC<{
                   </div>
                 ) : (
                   <>
-                    <p className="font-medium text-zinc-100 truncate">{j.title || j.slug}</p>
+                    <p className="font-medium text-zinc-100 truncate flex items-center gap-2">
+                      <span className="truncate">{j.title || j.slug}</span>
+                      {j.papel === "matriz" && (
+                        <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-200">matriz</span>
+                      )}
+                    </p>
                     <p className="text-sm text-zinc-400">
                       {j.title ? `${j.slug} · ` : ""}
                       {LABEL_FORMATO[j.orientation] ?? j.orientation} · {progresso(j)}
@@ -344,6 +438,18 @@ export const ProjectsScreen: React.FC<{
                   >
                     Renomear
                   </button>
+                  {/* só matrizes (papel === "matriz") geram variações — um
+                      projeto normal não tem trimmed/transcript compatíveis
+                      com a composição de hook (spec 2026-08-01) */}
+                  {j.papel === "matriz" && (
+                    <button
+                      aria-label={`nova variação de ${j.slug}`}
+                      onClick={() => setModo({ slug: j.slug, tipo: "variando" })}
+                      className="px-3 py-1 bg-indigo-700 rounded text-sm"
+                    >
+                      Nova variação
+                    </button>
+                  )}
                   {/* também sem source: projetos liberados antes das partes
                       entrarem na limpeza ficaram com órfãs em input/ que a
                       lista mostra no tamanho — este botão é o único caminho
@@ -382,6 +488,15 @@ export const ProjectsScreen: React.FC<{
                 job={j}
                 emAndamento={emAndamento.has(j.slug)}
                 onConfirmar={() => liberar(j)}
+                onDesistir={() => setModo(null)}
+              />
+            )}
+
+            {emModo(j, "variando") && (
+              <NovaVariacaoDialog
+                matriz={j}
+                sugestao={sugerirNomeVariacao(j.slug, (jobs ?? []).map((x) => x.slug))}
+                onCriada={(novoSlug) => { setModo(null); onOpen(novoSlug, HOOK_STEP); }}
                 onDesistir={() => setModo(null)}
               />
             )}

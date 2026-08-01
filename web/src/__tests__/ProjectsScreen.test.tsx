@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 
-const { listJobs, putTitle, deleteJob, deleteSource } = vi.hoisted(() => ({
+const { listJobs, putTitle, deleteJob, deleteSource, createVariant } = vi.hoisted(() => ({
   listJobs: vi.fn(),
   putTitle: vi.fn(async () => {}),
   deleteJob: vi.fn(async () => {}),
   deleteSource: vi.fn(async () => {}),
+  createVariant: vi.fn(async (_slug: string, _file: File, _novoSlug: string, _handlers: any) => {}),
 }));
-vi.mock("../api", () => ({ listJobs, putTitle, deleteJob, deleteSource }));
+vi.mock("../api", () => ({ listJobs, putTitle, deleteJob, deleteSource, createVariant }));
 
-import { ProjectsScreen } from "../ProjectsScreen";
+import { ProjectsScreen, sugerirNomeVariacao } from "../ProjectsScreen";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -469,6 +470,76 @@ describe("ProjectsScreen — erro entre ações", () => {
     await waitFor(() => expect(api.putTitle).toHaveBeenCalled());
 
     expect(screen.queryByText(/não consegui apagar/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("sugerirNomeVariacao", () => {
+  it("sugere -h1 quando não há nenhuma variação ainda", () => {
+    expect(sugerirNomeVariacao("corpo", ["corpo"])).toBe("corpo-h1");
+  });
+
+  it("pula nomes já ocupados e sugere o menor livre", () => {
+    expect(sugerirNomeVariacao("corpo", ["corpo", "corpo-h1", "corpo-h2"])).toBe("corpo-h3");
+  });
+});
+
+describe("ProjectsScreen — nova variação", () => {
+  const matriz = { ...projeto, slug: "corpo", papel: "matriz" as const };
+
+  it("matriz mostra badge e o botão Nova variação; projeto normal não tem o botão", async () => {
+    listJobs.mockResolvedValueOnce([matriz, { ...projeto, slug: "outro" }]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    await screen.findByText("matriz");
+    expect(screen.getByRole("button", { name: /nova variação de corpo/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /nova variação de outro/i })).not.toBeInTheDocument();
+  });
+
+  it("o diálogo sugere o menor nome livre corpo-h1, corpo-h2…", async () => {
+    listJobs.mockResolvedValueOnce([
+      matriz,
+      { ...projeto, slug: "corpo-h1" },
+    ]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /nova variação de corpo/i }));
+    const nome = await screen.findByLabelText(/nome da variação/i);
+    expect(nome).toHaveValue("corpo-h2");
+  });
+
+  it("confirmar cria a variação e abre no passo do hook", async () => {
+    const onOpen = vi.fn();
+    listJobs.mockResolvedValueOnce([matriz]);
+    createVariant.mockImplementationOnce(async (_slug, _file, novoSlug, handlers) => {
+      handlers.done({ slug: novoSlug });
+    });
+    render(<ProjectsScreen onOpen={onOpen} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /nova variação de corpo/i }));
+
+    const arquivo = new File(["hook"], "hook.mov", { type: "video/quicktime" });
+    const inputArquivo = screen.getByLabelText(/clipe de hook/i) as HTMLInputElement;
+    fireEvent.change(inputArquivo, { target: { files: [arquivo] } });
+
+    fireEvent.click(screen.getByRole("button", { name: /criar variação/i }));
+
+    await waitFor(() => expect(createVariant).toHaveBeenCalledWith(
+      "corpo", arquivo, "corpo-h1", expect.anything(),
+    ));
+    expect(onOpen).toHaveBeenCalledWith("corpo-h1", 3);
+  });
+
+  it("erro 409 no createVariant mantém o diálogo aberto com a mensagem", async () => {
+    listJobs.mockResolvedValueOnce([matriz]);
+    createVariant.mockImplementationOnce(async (_slug, _file, _novoSlug, handlers) => {
+      handlers.error({ detail: "este projeto não é uma matriz de variações de hook" });
+    });
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /nova variação de corpo/i }));
+
+    const arquivo = new File(["hook"], "hook.mov", { type: "video/quicktime" });
+    fireEvent.change(screen.getByLabelText(/clipe de hook/i), { target: { files: [arquivo] } });
+    fireEvent.click(screen.getByRole("button", { name: /criar variação/i }));
+
+    expect(await screen.findByText(/não é uma matriz/i)).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog", { name: /nova variação de corpo/i })).toBeInTheDocument();
   });
 });
 
