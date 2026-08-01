@@ -5,6 +5,8 @@ import { ProgressBar } from "../components/ProgressBar";
 import { formatSeconds, percentage } from "../util";
 import type { CutResult, CutParams } from "../types";
 import type { StepProps } from "../App";
+import { oQueSePerde, listarPerdas, TUDO_QUE_SE_PERDE } from "../perda";
+import { useAlertDialog } from "../useAlertDialog";
 
 // Parágrafo compartilhado pelos dois diálogos de confirmação (re-detectar
 // pausas e corte manual): lista o que será descartado, com a variante
@@ -18,13 +20,13 @@ const AvisoDescarte: React.FC<{
     {aPerder === null ? (
       <>
         Não foi possível confirmar o que este projeto já tem salvo. {acao}, então{" "}
-        <strong>a transcrição, os textos, as sugestões e a receita de render</strong>{" "}
+        <strong>{TUDO_QUE_SE_PERDE}</strong>{" "}
         seriam descartados, se existirem — as legendas ficariam fora de sincronia
         com o vídeo novo.
       </>
     ) : (
       <>
-        {acao}, então <strong>{aPerder.join(", ")}</strong>{" "}
+        {acao}, então <strong>{listarPerdas(aPerder)}</strong>{" "}
         {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
         legendas ficariam fora de sincronia com o vídeo novo.
         {perdeTranscricao && " Você vai precisar transcrever outra vez."}
@@ -32,6 +34,39 @@ const AvisoDescarte: React.FC<{
     )}
   </p>
 );
+
+// Os dois diálogos de confirmação (re-detectar pausas e corte manual) são o
+// mesmo alertdialog com rótulo/ação/gatilho diferentes — viram um componente
+// à parte para poder chamar useAlertDialog, que precisa montar e desmontar
+// junto com o próprio diálogo (chamar o hook direto no corpo de CutsStep
+// violaria as Rules of Hooks, já que os dois só existem condicionalmente).
+const ConfirmarDescarte: React.FC<{
+  ariaLabel: string;
+  acao: string;
+  aPerder: string[] | null;
+  perdeTranscricao: boolean;
+  busy: boolean;
+  onConfirmar: () => void;
+  onDesistir: () => void;
+}> = ({ ariaLabel, acao, aPerder, perdeTranscricao, busy, onConfirmar, onDesistir }) => {
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  return (
+    <div ref={ref} role="alertdialog" aria-modal="true" aria-label={ariaLabel}
+         className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
+      <AvisoDescarte acao={acao} aPerder={aPerder} perdeTranscricao={perdeTranscricao} />
+      <div className="flex gap-2">
+        <button onClick={onConfirmar} disabled={busy}
+                className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">
+          Descartar e cortar
+        </button>
+        <button onClick={onDesistir} disabled={busy}
+                className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">
+          Desistir
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [params, setParams] = useState<CutParams>({
@@ -88,12 +123,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.config) setParams(j.config);
       setTemSource(j?.has_source !== false);
       setPerdeTranscricao(!!j?.has_transcript);
-      setAPerder([
-        j?.has_transcript && "a transcrição",
-        j?.has_overlays && "os textos",
-        j?.has_suggestions && "as sugestões",
-        j?.has_recipe && "a receita de render",
-      ].filter(Boolean) as string[]);
+      setAPerder(oQueSePerde(j ?? {}));
     }).catch(() => {
       // getJob falhou: aPerder fica null (não sabemos o que este projeto tem)
       // e não vai mudar sozinho — travar o botão esperando por uma resposta
@@ -235,21 +265,14 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         {busy ? "Cortando..." : "Detectar pausas"}
       </button>
       {confirmandoCorte && (
-        <div role="alertdialog" aria-label="confirmar nova detecção de pausas"
-             className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
-          <AvisoDescarte acao="Detectar pausas refaz o corte a partir do vídeo original"
-                         aPerder={aPerder} perdeTranscricao={perdeTranscricao} />
-          <div className="flex gap-2">
-            <button onClick={onCut} disabled={busy}
-                    className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">
-              Descartar e cortar
-            </button>
-            <button onClick={() => setConfirmandoCorte(false)} disabled={busy}
-                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">
-              Desistir
-            </button>
-          </div>
-        </div>
+        <ConfirmarDescarte
+          ariaLabel="confirmar nova detecção de pausas"
+          acao="Detectar pausas refaz o corte a partir do vídeo original"
+          aPerder={aPerder} perdeTranscricao={perdeTranscricao}
+          busy={busy}
+          onConfirmar={onCut}
+          onDesistir={() => setConfirmandoCorte(false)}
+        />
       )}
       {!temSource && (
         <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
@@ -343,21 +366,14 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                   {refining ? "Aplicando..." : `Aplicar cortes (${removeList.length})`}
                 </button>
                 {confirmandoRefino && (
-                  <div role="alertdialog" aria-label="confirmar corte manual"
-                       className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
-                    <AvisoDescarte acao="Cortar de novo encurta o vídeo"
-                                   aPerder={aPerder} perdeTranscricao={perdeTranscricao} />
-                    <div className="flex gap-2">
-                      <button onClick={applyRefine} disabled={refining}
-                              className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">
-                        Descartar e cortar
-                      </button>
-                      <button onClick={() => setConfirmandoRefino(false)} disabled={refining}
-                              className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">
-                        Desistir
-                      </button>
-                    </div>
-                  </div>
+                  <ConfirmarDescarte
+                    ariaLabel="confirmar corte manual"
+                    acao="Cortar de novo encurta o vídeo"
+                    aPerder={aPerder} perdeTranscricao={perdeTranscricao}
+                    busy={refining}
+                    onConfirmar={applyRefine}
+                    onDesistir={() => setConfirmandoRefino(false)}
+                  />
                 )}
                 {refining && refineProg && <ProgressBar label="Aplicando cortes" n={Math.round(refineProg.n)} total={Math.round(refineProg.total)} />}
               </>

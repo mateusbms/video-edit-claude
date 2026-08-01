@@ -58,6 +58,44 @@ describe("UploadStep", () => {
   });
 });
 
+describe("UploadStep — acessibilidade do diálogo de colisão", () => {
+  it("ao abrir, o foco já está dentro do diálogo", async () => {
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /projeto já existe/i });
+    expect(aviso).toHaveAttribute("aria-modal", "true");
+    expect(aviso.contains(document.activeElement)).toBe(true);
+  });
+
+  it("Esc fecha o diálogo de colisão sem substituir nem abrir o existente", async () => {
+    const api = await import("../api");
+    (api.uploadJob as any).mockRejectedValueOnce(
+      new api.SlugOcupado({ slug: "A1", has_transcript: true } as any),
+    );
+    render(<UploadStep {...props} />);
+    fireEvent.change(screen.getByLabelText(/arquivos de vídeo/i), {
+      target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /projeto já existe/i });
+    const chamadasAntes = (api.uploadJob as any).mock.calls.length;
+
+    fireEvent.keyDown(aviso, { key: "Escape" });
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // não reenviou (nem substituiu, nem abriu o existente) — só sugeriu um
+    // slug novo, igual ao botão "Criar novo projeto"
+    expect((api.uploadJob as any).mock.calls.length).toBe(chamadasAntes);
+  });
+});
+
 describe("abrir projeto existente (com slug)", () => {
   beforeEach(() => {
     uploadJob.mockReset();

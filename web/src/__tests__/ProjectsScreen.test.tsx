@@ -155,6 +155,30 @@ describe("ProjectsScreen — excluir", () => {
     expect(screen.getByText("A1")).toBeInTheDocument();
   });
 
+  it("ao abrir a confirmação de exclusão, o foco já está dentro do diálogo", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+    expect(aviso).toHaveAttribute("aria-modal", "true");
+    expect(aviso.contains(document.activeElement)).toBe(true);
+  });
+
+  it("Esc fecha a confirmação de exclusão sem apagar", async () => {
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+
+    fireEvent.keyDown(aviso, { key: "Escape" });
+
+    expect(api.deleteJob).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByText("A1")).toBeInTheDocument();
+  });
+
   it("lista o que o projeto realmente tem, nomeando hook e receita de render", async () => {
     const api = await import("../api");
     const completo = { ...projeto, has_hook: true, has_recipe: true };

@@ -450,6 +450,28 @@ describe("CutsStep — aviso antes do Detectar pausas destruir trabalho", () => 
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
+  it("ao abrir o aviso, o foco já está dentro do diálogo", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+
+    const aviso = await screen.findByRole("alertdialog");
+    expect(aviso).toHaveAttribute("aria-modal", "true");
+    expect(aviso.contains(document.activeElement)).toBe(true);
+  });
+
+  it("Esc fecha o aviso sem cortar", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+    const aviso = await screen.findByRole("alertdialog");
+
+    fireEvent.keyDown(aviso, { key: "Escape" });
+
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/cut"))).toBe(false);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
   it("sem nada a perder, corta direto e não pergunta", async () => {
     // getJob padrão: sem flags has_* → aPerder = []
     render(<CutsStep {...props} />);

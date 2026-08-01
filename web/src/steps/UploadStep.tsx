@@ -5,12 +5,63 @@ import { formatSeconds } from "../util";
 import type { StepProps } from "../App";
 import type { JobSummary } from "../types";
 import { orientationFromProbe, type Orientation } from "../frame";
+import { oQueSePerde, listarPerdas } from "../perda";
+import { useAlertDialog } from "../useAlertDialog";
 
 type Probe = { width: number; height: number; fps: number; duration: number };
 
 const LABELS: Record<Orientation, string> = {
   "16x9": "16:9 (horizontal)",
   "9x16": "9:16 (vertical)",
+};
+
+// Diálogo de colisão de slug — componente à parte (em vez de JSX inline no
+// corpo de UploadStep) para poder chamar useAlertDialog, que precisa montar e
+// desmontar junto com o próprio diálogo.
+const ColisaoDialog: React.FC<{
+  colisao: JobSummary;
+  onCriarNovo: () => void;
+  onAbrirExistente: () => void;
+  onSubstituir: () => void;
+}> = ({ colisao, onCriarNovo, onAbrirExistente, onSubstituir }) => {
+  // Sem um botão "Cancelar" explícito neste diálogo (as três opções são
+  // "Criar novo projeto", "Abrir o existente" e "Substituir o vídeo") — Esc
+  // usa a mesma ação de "Criar novo projeto": é a única das três que nem
+  // descarta o projeto existente nem abre algo que o usuário não pediu.
+  const ref = useAlertDialog<HTMLDivElement>(onCriarNovo);
+  // "corte" e "hook" não fazem parte dos quatro itens de oQueSePerde (essa
+  // função só cobre has_transcript/has_overlays/has_suggestions/has_recipe) —
+  // continuam nomeados à parte, como antes.
+  const extras = [
+    colisao.has_trimmed && "corte",
+    colisao.has_hook && "hook",
+  ].filter((x): x is string => Boolean(x));
+  const itens = [...extras, ...oQueSePerde(colisao)];
+  return (
+    <div ref={ref} role="alertdialog" aria-modal="true" aria-label="projeto já existe"
+         className="rounded border border-amber-700 bg-amber-950/40 p-4 text-sm space-y-3">
+      <p className="text-amber-200">
+        <strong>O projeto "{colisao.slug}" já existe.</strong>{" "}
+        {listarPerdas(itens) || "o vídeo enviado"}
+        {" "}está salvo nele.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={onCriarNovo} className="px-3 py-1 bg-emerald-600 rounded">
+          Criar novo projeto
+        </button>
+        <button onClick={onAbrirExistente} className="px-3 py-1 bg-zinc-800 rounded">
+          Abrir o existente
+        </button>
+        <button onClick={onSubstituir} className="px-3 py-1 bg-red-900 rounded">
+          Substituir o vídeo
+        </button>
+      </div>
+      <p className="text-xs text-amber-300/70">
+        Substituir descarta corte, transcrição e textos. O vídeo já
+        exportado em output/ é mantido.
+      </p>
+    </div>
+  );
 };
 
 export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
@@ -187,60 +238,18 @@ export const UploadStep: React.FC<StepProps> = ({ slug, setSlug, next }) => {
       </button>
       {err && <p className="text-red-400 text-sm">{err}</p>}
       {colisao && (
-        <div role="alertdialog" aria-label="projeto já existe"
-             className="rounded border border-amber-700 bg-amber-950/40 p-4 text-sm space-y-3">
-          <p className="text-amber-200">
-            <strong>O projeto "{colisao.slug}" já existe.</strong>{" "}
-            {[
-              colisao.has_trimmed && "corte",
-              colisao.has_transcript && "transcrição",
-              colisao.has_hook && "hook",
-              // overlays.json e suggestions.json são arquivos independentes
-              // da recipe (mesmo raciocínio do N1 em ProjectsScreen): usar
-              // has_recipe aqui deixava de nomear "textos" quando a recipe
-              // tinha sido apagada por uma troca de orientação, mas
-              // overlays.json/suggestions.json continuavam de pé — e
-              // "Substituir" os apaga do mesmo jeito.
-              colisao.has_overlays && "textos",
-              colisao.has_suggestions && "sugestões",
-              // edit-recipe.json está em DERIVADOS_DO_SOURCE — "Substituir"
-              // também o apaga. ProjectsScreen nomeia "a receita de render";
-              // este diálogo precisa nomear o mesmo.
-              colisao.has_recipe && "receita de render",
-            ].filter(Boolean).join(", ") || "o vídeo enviado"}
-            {" "}está salvo nele.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                // Exclui o slug que acabou de colidir da sugestão: sem isso,
-                // com listJobs falho (slugsUsados == []) o botão podia propor
-                // de volta o mesmo nome ocupado.
-                setLocalSlug(proximoSlugLivre([...slugsUsados, colisao.slug]));
-                setColisao(null);
-              }}
-              className="px-3 py-1 bg-emerald-600 rounded"
-            >
-              Criar novo projeto
-            </button>
-            <button
-              onClick={() => { setSlug(colisao.slug); setColisao(null); next(); }}
-              className="px-3 py-1 bg-zinc-800 rounded"
-            >
-              Abrir o existente
-            </button>
-            <button
-              onClick={() => enviar(true, colisao.slug)}
-              className="px-3 py-1 bg-red-900 rounded"
-            >
-              Substituir o vídeo
-            </button>
-          </div>
-          <p className="text-xs text-amber-300/70">
-            Substituir descarta corte, transcrição e textos. O vídeo já
-            exportado em output/ é mantido.
-          </p>
-        </div>
+        <ColisaoDialog
+          colisao={colisao}
+          onCriarNovo={() => {
+            // Exclui o slug que acabou de colidir da sugestão: sem isso,
+            // com listJobs falho (slugsUsados == []) o botão podia propor
+            // de volta o mesmo nome ocupado.
+            setLocalSlug(proximoSlugLivre([...slugsUsados, colisao.slug]));
+            setColisao(null);
+          }}
+          onAbrirExistente={() => { setSlug(colisao.slug); setColisao(null); next(); }}
+          onSubstituir={() => enviar(true, colisao.slug)}
+        />
       )}
       {probe && (
         <div className="bg-zinc-900 border border-zinc-800 rounded p-4 text-sm">

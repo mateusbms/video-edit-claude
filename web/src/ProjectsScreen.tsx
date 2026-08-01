@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { listJobs, putTitle, deleteJob, deleteSource } from "./api";
 import type { JobSummary } from "./types";
+import { oQueSePerde, listarPerdas } from "./perda";
+import { useAlertDialog } from "./useAlertDialog";
 
 const LABEL_FORMATO: Record<string, string> = {
   "16x9": "16:9",
@@ -30,31 +32,20 @@ function quando(epochSegundos: number): string {
   });
 }
 
-/** "a", "a e b", "a, b e c" — nunca "a, b, c" seco demais para uma frase. */
-function listaNatural(itens: string[]): string {
-  if (itens.length === 0) return "nada";
-  if (itens.length === 1) return itens[0];
-  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
-}
-
 /**
  * O que se perde ao apagar o projeto — a partir do que ele de fato tem, não
  * de uma lista fixa. Um projeto recém-criado não tem transcrição pra perder,
  * e um projeto que nunca gerou receita de render não tem hook nem textos.
+ * "a transcrição"/"os textos"/"as sugestões"/"a receita de render" saem de
+ * `oQueSePerde` (web/src/perda.ts) — a mesma fonte que CutsStep e UploadStep
+ * usam para esses quatro itens, para não divergir de novo em silêncio.
  */
 function itensPerdidos(j: JobSummary): string[] {
   return [
     j.has_source && "o vídeo original",
     j.has_trimmed && "o corte",
-    j.has_transcript && "a transcrição",
     j.has_hook && "o hook",
-    // "os textos" é overlays.json e "as sugestões" é suggestions.json — dois
-    // arquivos independentes da recipe (update_orientation apaga
-    // edit-recipe.json ao trocar de formato, mas mantém os dois). Cada um
-    // sai da própria flag para não mentir em nenhuma das duas direções.
-    j.has_overlays && "os textos",
-    j.has_suggestions && "as sugestões",
-    j.has_recipe && "a receita de render",
+    ...oQueSePerde(j),
   ].filter((x): x is string => Boolean(x));
 }
 
@@ -62,8 +53,89 @@ function itensPerdidos(j: JobSummary): string[] {
 function fraseDeExclusao(j: JobSummary): string {
   const itens = itensPerdidos(j);
   if (itens.length === 0) return "não tem nada a perder — o projeto ainda está vazio";
-  return `descarta ${listaNatural(itens)}`;
+  return `descarta ${listarPerdas(itens)}`;
 }
+
+// Os dois diálogos de confirmação viram componentes à parte (em vez de JSX
+// inline no .map()) para poder chamar useAlertDialog: o hook precisa montar
+// e desmontar junto com o próprio diálogo — chamá-lo direto dentro do .map()
+// violaria as Rules of Hooks (número de chamadas variável por render).
+const ConfirmarExclusao: React.FC<{
+  job: JobSummary;
+  emAndamento: boolean;
+  onConfirmar: () => void;
+  onDesistir: () => void;
+}> = ({ job, emAndamento, onConfirmar, onDesistir }) => {
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  return (
+    <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`confirmar exclusão de ${job.slug}`}
+         className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
+      <p className="text-red-200">
+        Apagar <strong>{job.title || job.slug}</strong> {fraseDeExclusao(job)}.
+        {(job.has_render_16x9 || job.has_render_9x16) &&
+          ` O vídeo já exportado (${tamanho(job.bytes_render)}) é mantido.`}
+      </p>
+      <div className="flex gap-2">
+        {/* Sem aria-label: o texto visível "Apagar mesmo assim" já é o nome
+            acessível. Um aria-label diferente do rótulo visível quebra comando
+            por voz (WCAG 2.5.3) e, dentro deste alertdialog, duplicava o nome
+            dele — o próprio div já se anuncia como "confirmar exclusão de X". */}
+        <button
+          onClick={onConfirmar}
+          disabled={emAndamento}
+          className="px-3 py-1 bg-red-900 rounded disabled:opacity-50"
+        >
+          Apagar mesmo assim
+        </button>
+        <button
+          onClick={onDesistir}
+          disabled={emAndamento}
+          className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
+        >
+          Desistir
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmarLiberar: React.FC<{
+  job: JobSummary;
+  emAndamento: boolean;
+  onConfirmar: () => void;
+  onDesistir: () => void;
+}> = ({ job, emAndamento, onConfirmar, onDesistir }) => {
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  return (
+    <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`confirmar liberar espaço de ${job.slug}`}
+         className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
+      <p className="text-amber-200">
+        Libera <strong>{tamanho(job.bytes_source + job.bytes_parts)}</strong> apagando o
+        vídeo original{job.bytes_parts > 0 && " e as cópias do upload"}.
+        Você continua podendo transcrever, fazer cortes manuais, editar textos,
+        legendas e renderizar — mas
+        <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a
+        resolução original se perde.
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={onConfirmar}
+          disabled={emAndamento}
+          className="px-3 py-1 bg-amber-800 rounded disabled:opacity-50"
+        >
+          Confirmar
+        </button>
+        <button
+          onClick={onDesistir}
+          disabled={emAndamento}
+          className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
+        >
+          Desistir
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Uma linha por vez em modo de edição ou confirmação — duas confirmações
 // destrutivas abertas ao mesmo tempo é convite para clicar na errada.
@@ -281,64 +353,21 @@ export const ProjectsScreen: React.FC<{
             </div>
 
             {emModo(j, "excluindo") && (
-              <div role="alertdialog" aria-label={`confirmar exclusão de ${j.slug}`}
-                   className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
-                <p className="text-red-200">
-                  Apagar <strong>{j.title || j.slug}</strong> {fraseDeExclusao(j)}.
-                  {(j.has_render_16x9 || j.has_render_9x16) &&
-                    ` O vídeo já exportado (${tamanho(j.bytes_render)}) é mantido.`}
-                </p>
-                <div className="flex gap-2">
-                  {/* Sem aria-label: o texto visível "Apagar mesmo assim" já é o nome
-                      acessível. Um aria-label diferente do rótulo visível quebra comando
-                      por voz (WCAG 2.5.3) e, dentro deste alertdialog, duplicava o nome
-                      dele — o próprio div já se anuncia como "confirmar exclusão de X". */}
-                  <button
-                    onClick={() => excluir(j)}
-                    disabled={emAndamento.has(j.slug)}
-                    className="px-3 py-1 bg-red-900 rounded disabled:opacity-50"
-                  >
-                    Apagar mesmo assim
-                  </button>
-                  <button
-                    onClick={() => setModo(null)}
-                    disabled={emAndamento.has(j.slug)}
-                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
-                  >
-                    Desistir
-                  </button>
-                </div>
-              </div>
+              <ConfirmarExclusao
+                job={j}
+                emAndamento={emAndamento.has(j.slug)}
+                onConfirmar={() => excluir(j)}
+                onDesistir={() => setModo(null)}
+              />
             )}
 
             {emModo(j, "liberando") && (
-              <div role="alertdialog" aria-label={`confirmar liberar espaço de ${j.slug}`}
-                   className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
-                <p className="text-amber-200">
-                  Libera <strong>{tamanho(j.bytes_source + j.bytes_parts)}</strong> apagando o
-                  vídeo original{j.bytes_parts > 0 && " e as cópias do upload"}.
-                  Você continua podendo transcrever, fazer cortes manuais, editar textos,
-                  legendas e renderizar — mas
-                  <strong> Detectar pausas</strong> deixa de funcionar neste projeto, e a
-                  resolução original se perde.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => liberar(j)}
-                    disabled={emAndamento.has(j.slug)}
-                    className="px-3 py-1 bg-amber-800 rounded disabled:opacity-50"
-                  >
-                    Confirmar
-                  </button>
-                  <button
-                    onClick={() => setModo(null)}
-                    disabled={emAndamento.has(j.slug)}
-                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50"
-                  >
-                    Desistir
-                  </button>
-                </div>
-              </div>
+              <ConfirmarLiberar
+                job={j}
+                emAndamento={emAndamento.has(j.slug)}
+                onConfirmar={() => liberar(j)}
+                onDesistir={() => setModo(null)}
+              />
             )}
           </li>
         ))}
