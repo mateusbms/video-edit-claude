@@ -269,3 +269,33 @@ def test_put_overlays_slug_com_travessia_responde_404(client, tmp_root):
     jobs_root."""
     r = client.put("/api/jobs/%2e%2e/overlays", json=[])
     assert r.status_code == 404
+
+
+def test_upload_com_papel_matriz_grava_no_config(client, sample_mp4, tmp_root):
+    with open(sample_mp4, "rb") as f:
+        r = client.post("/api/jobs", data={"slug": "m1", "papel": "matriz"},
+                        files=[("files", ("s.mp4", f, "video/mp4"))])
+    assert r.status_code == 200, r.text
+    import json
+    cfg = json.loads((tmp_root / "jobs" / "m1" / "job.config.json").read_text(encoding="utf-8"))
+    assert cfg["papel"] == "matriz"
+
+    s = client.get("/api/jobs/m1").json()
+    assert s["papel"] == "matriz"
+    lista = client.get("/api/jobs").json()
+    assert [j["papel"] for j in lista if j["slug"] == "m1"] == ["matriz"]
+
+
+def test_upload_sem_papel_continua_normal(client, sample_mp4):
+    with open(sample_mp4, "rb") as f:
+        r = client.post("/api/jobs", data={"slug": "n1"},
+                        files=[("files", ("s.mp4", f, "video/mp4"))])
+    assert r.status_code == 200
+    assert client.get("/api/jobs/n1").json()["papel"] == "normal"
+
+
+def test_papel_invalido_no_upload_e_400(client, sample_mp4):
+    with open(sample_mp4, "rb") as f:
+        r = client.post("/api/jobs", data={"slug": "n2", "papel": "chefe"},
+                        files=[("files", ("s.mp4", f, "video/mp4"))])
+    assert r.status_code == 400

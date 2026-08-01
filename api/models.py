@@ -165,6 +165,8 @@ class JobState(BaseModel):
     captionStyleResolved: dict | None = None  # com o brand kit aplicado (o que o render usa)
     brandKitSlug: str = ""
     orientation: str = "16x9"  # efetiva (já resolvida); nunca vazia
+    papel: str = "normal"
+    origem_matriz: str = ""
 
 
 class JobSummary(BaseModel):
@@ -173,6 +175,8 @@ class JobSummary(BaseModel):
     title: str = ""
     updated_at: float = 0.0
     orientation: str = "16x9"
+    papel: str = "normal"
+    origem_matriz: str = ""
     has_source: bool = False
     has_trimmed: bool = False
     has_transcript: bool = False

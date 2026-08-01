@@ -70,11 +70,14 @@ async def create_job(
     files: list[UploadFile] = File(...),
     slug: str = Form(default="job"),
     overwrite: bool = Form(default=False),
+    papel: str = Form(default="normal"),
 ):
     jobs_root, input_root, output_root = _roots()
     input_root.mkdir(parents=True, exist_ok=True)
     if not files:
         raise HTTPException(status_code=400, detail="envie ao menos um arquivo")
+    if papel not in ("normal", "matriz"):
+        raise HTTPException(status_code=400, detail="papel inválido")
 
     # Antes de gravar qualquer byte: subir um vídeo por cima de um projeto com
     # trabalho apaga o corte, a transcrição e os textos dele (stage_ingest). A
@@ -122,6 +125,11 @@ async def create_job(
             shutil.copyfileobj(f.file, out)
         paths.append(str(upload_path))
     job = init_job(jobs_root, slug)
+    if papel == "matriz":
+        cfg_path = Path(jobs_root) / slug / "job.config.json"
+        data = load_json(cfg_path)
+        data["papel"] = "matriz"
+        write_json(cfg_path, data)
     try:
         stage_ingest(job, paths)
     except Exception as e:

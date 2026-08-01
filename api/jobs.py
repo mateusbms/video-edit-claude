@@ -122,6 +122,8 @@ def job_summary(job_dir: Path, input_root: Path, output_root: Path) -> JobSummar
         title=cfg.get("title", ""),
         updated_at=max((p.stat().st_mtime for p in arquivos), default=0.0),
         orientation=resolve_orientation(cfg.get("orientation", ""), probe),
+        papel=cfg.get("papel", "normal"),
+        origem_matriz=cfg.get("origem_matriz", ""),
         has_source=source.exists(),
         has_trimmed=(job_dir / "trimmed.mp4").exists(),
         has_transcript=(job_dir / "transcript.json").exists(),
@@ -488,6 +490,8 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_suggestions=_tem_conteudo_lista(job_dir / "suggestions.json"),
         has_render_16x9=False,  # preenchido pelo caller com OUTPUT_ROOT
         has_render_9x16=False,
+        papel=job_config.papel,
+        origem_matriz=job_config.origem_matriz,
     )
     state.captionStyle = {
         "fontSize": job_config.caption_font_size,

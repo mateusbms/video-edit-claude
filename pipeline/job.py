@@ -22,6 +22,11 @@ class JobConfig:
     caption_font: str = ""
     orientation: str = ""  # "" = auto (deriva do probe); "16x9" | "9x16" = escolha do usuário
     title: str = ""  # nome legível na lista de projetos; "" = usa o slug
+    # "matriz" = projeto só-corpo que gera variações de hook (spec 2026-08-01);
+    # variações nascem "normal" com origem_matriz preenchido (só exibição —
+    # a variação é autossuficiente e sobrevive à exclusão da matriz).
+    papel: str = "normal"  # "normal" | "matriz"
+    origem_matriz: str = ""
 
 
 @dataclass
