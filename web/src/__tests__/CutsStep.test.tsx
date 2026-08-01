@@ -485,6 +485,24 @@ describe("CutsStep — aviso antes do Detectar pausas destruir trabalho", () => 
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
+  // espelho do teste equivalente do refino: os resets moram no done (só no
+  // sucesso) — um corte que falha não pode zerar o aviso da próxima tentativa
+  it("corte que falha mantém o aviso para a próxima tentativa", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+
+    streamSSE.mockImplementationOnce(async (_url: string, _opts: any, on: any) => {
+      on.error?.({ detail: "falha simulada" });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+    await screen.findByText(/falha simulada/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
+    expect(await screen.findByText(/refaz o corte/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.filter((c) => String(c[0]).includes("/cut")).length).toBe(1);
+  });
+
   it("o corte novo limpa as marcações da timeline antiga", async () => {
     // marcações de corte manual referenciam o trimmed anterior, que o
     // Detectar pausas acabou de substituir

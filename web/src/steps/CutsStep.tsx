@@ -117,6 +117,13 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
     if (removeList.length === 0) setConfirmandoRefino(false);
   }, [removeList]);
 
+  // Espelho do efeito acima para o diálogo do corte: um refino que termina
+  // com ele aberto zera aPerder, e o aviso passaria a listar um vazio —
+  // "então [nada] será descartado". Sem nada a perder não há o que confirmar.
+  useEffect(() => {
+    if (aPerder !== null && aPerder.length === 0) setConfirmandoCorte(false);
+  }, [aPerder]);
+
   const curTime = () => videoRef.current?.currentTime ?? 0;
   const onMarkStart = () => setMarkStart(curTime());
   const onMarkEnd = () => {
