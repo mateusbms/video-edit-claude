@@ -209,3 +209,28 @@ def test_concat_que_falha_mesmo_normalizado_estoura(monkeypatch, tmp_path):
 
     with _pytest.raises(RuntimeError, match="concat"):
         variants._concat_hook_e_corpo("hook.mp4", "corpo.mp4", str(tmp_path / "out.mp4"))
+
+
+def test_paridade_captions_da_variacao_sao_as_da_matriz_deslocadas():
+    """Legenda da variação = legenda da matriz deslocada por delta, medida no
+    produto final (frames da recipe do Remotion), não na transcrição
+    intermediária. build_recipe é keyword-only (pipeline/recipe.py)."""
+    from pipeline.recipe import build_recipe
+    from pipeline.variants import fundir_transcricoes
+    fps = 30.0
+    delta = 3.2
+    base = dict(width=1080, height=1920, fps=fps,
+                hook={"title": "", "subtitle": ""}, hook_card_frames=0)
+
+    palavras_corpo = [{"word": "corpo", "start": 1.0, "end": 2.0}]
+    r_matriz = build_recipe(trimmed_duration=8.0, words=palavras_corpo, **base)
+
+    fundida = fundir_transcricoes([_linha("oi", 0.0, 0.8)],
+                                  [_linha("corpo", 1.0, 2.0)], delta)
+    palavras_fundidas = [w for linha in fundida for w in linha["words"]]
+    r_var = build_recipe(trimmed_duration=8.0 + delta, words=palavras_fundidas, **base)
+
+    # o gap hook→corpo (0.8s vs 4.2s) é maior que max_gap (0.6s), então o
+    # corpo vira caption própria nas duas recipes — comparável 1:1
+    assert (r_var["captions"][-1]["fromFrame"] - r_matriz["captions"][0]["fromFrame"]
+            == round(delta * fps))
