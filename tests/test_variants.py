@@ -145,3 +145,67 @@ def test_criar_variacao_matriz_sem_overlays_nao_estoura(tmp_path, monkeypatch):
     v = jobs_root / "corpo-h3"
     assert not (v / "overlays.json").exists()
     assert (v / "transcript.json").exists()
+
+
+def test_concat_nao_reencoda_o_corpo_quando_assinaturas_batem(monkeypatch, tmp_path):
+    """A promessa central da abordagem A: o corpo da matriz nunca passa por
+    reencode. Assinaturas iguais → copy-concat direto, sem normalizar nada."""
+    from pipeline import variants
+
+    chamadas = {"copy": [], "normalize": []}
+    monkeypatch.setattr(variants, "_probe_stream_info", lambda p: {"path": "x"})
+    monkeypatch.setattr(variants, "_signature", lambda info: ("igual",))
+    monkeypatch.setattr(variants, "_try_copy_concat",
+                        lambda paths, dest: (chamadas["copy"].append(list(paths)), True)[1])
+    monkeypatch.setattr(variants, "_normalize_clip",
+                        lambda *a, **k: chamadas["normalize"].append(a))
+
+    variants._concat_hook_e_corpo("hook.mp4", "corpo.mp4", str(tmp_path / "out.mp4"))
+
+    assert chamadas["copy"] == [["hook.mp4", "corpo.mp4"]]
+    assert chamadas["normalize"] == []
+
+
+def test_concat_divergente_normaliza_so_o_hook(monkeypatch, tmp_path):
+    """Assinaturas diferentes: SÓ o hook é normalizado (para os parâmetros do
+    corpo) e o concat roda com o hook normalizado + corpo original."""
+    from pipeline import variants
+
+    chamadas = {"copy": [], "normalize": []}
+    infos = {"hook.mp4": {"w": 1, "has_audio": True},
+             "corpo.mp4": {"w": 2, "fps": 30.0, "has_audio": True}}
+    monkeypatch.setattr(variants, "_probe_stream_info", lambda p: infos[p])
+    monkeypatch.setattr(variants, "_signature", lambda info: tuple(sorted(info.items())))
+    monkeypatch.setattr(variants, "_display_dims", lambda info: (1080, 1920))
+
+    def fake_normalize(src, dst, w, h, fps, has_audio):
+        chamadas["normalize"].append((src, w, h, fps))
+    monkeypatch.setattr(variants, "_normalize_clip", fake_normalize)
+
+    def fake_copy(paths, dest):
+        chamadas["copy"].append(list(paths))
+        return True
+    monkeypatch.setattr(variants, "_try_copy_concat", fake_copy)
+
+    variants._concat_hook_e_corpo("hook.mp4", "corpo.mp4", str(tmp_path / "out.mp4"))
+
+    assert len(chamadas["normalize"]) == 1
+    assert chamadas["normalize"][0][0] == "hook.mp4"           # só o hook
+    assert chamadas["normalize"][0][1:] == (1080, 1920, 30.0)  # parâmetros do corpo
+    # o concat final usa o hook normalizado + o corpo ORIGINAL
+    assert chamadas["copy"][-1][1] == "corpo.mp4"
+
+
+def test_concat_que_falha_mesmo_normalizado_estoura(monkeypatch, tmp_path):
+    from pipeline import variants
+    import pytest as _pytest
+
+    monkeypatch.setattr(variants, "_probe_stream_info",
+                        lambda p: {"p": p, "fps": 30.0, "has_audio": True})
+    monkeypatch.setattr(variants, "_signature", lambda info: info["p"])
+    monkeypatch.setattr(variants, "_display_dims", lambda info: (1080, 1920))
+    monkeypatch.setattr(variants, "_normalize_clip", lambda *a, **k: None)
+    monkeypatch.setattr(variants, "_try_copy_concat", lambda *a, **k: False)
+
+    with _pytest.raises(RuntimeError, match="concat"):
+        variants._concat_hook_e_corpo("hook.mp4", "corpo.mp4", str(tmp_path / "out.mp4"))
