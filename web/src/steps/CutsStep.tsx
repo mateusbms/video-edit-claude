@@ -49,7 +49,7 @@ const ConfirmarDescarte: React.FC<{
   onConfirmar: () => void;
   onDesistir: () => void;
 }> = ({ ariaLabel, acao, aPerder, perdeTranscricao, busy, onConfirmar, onDesistir }) => {
-  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir, busy);
   return (
     <div ref={ref} role="alertdialog" aria-modal="true" aria-label={ariaLabel}
          className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">

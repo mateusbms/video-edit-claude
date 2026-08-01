@@ -33,8 +33,8 @@ const ColisaoDialog: React.FC<{
   // função só cobre has_transcript/has_overlays/has_suggestions/has_recipe) —
   // continuam nomeados à parte, como antes.
   const extras = [
-    colisao.has_trimmed && "corte",
-    colisao.has_hook && "hook",
+    colisao.has_trimmed && "o corte",
+    colisao.has_hook && "o hook",
   ].filter((x): x is string => Boolean(x));
   const itens = [...extras, ...oQueSePerde(colisao)];
   return (

@@ -179,6 +179,23 @@ describe("ProjectsScreen — excluir", () => {
     expect(screen.getByText("A1")).toBeInTheDocument();
   });
 
+  it("Esc não fecha o diálogo com a exclusão em andamento", async () => {
+    // os botões desabilitam durante o delete justamente para o diálogo não
+    // sumir no meio da operação — o Esc não pode burlar isso
+    const api = await import("../api");
+    (api.listJobs as any).mockResolvedValueOnce([projeto]);
+    // delete pendurado: nunca resolve, emAndamento fica ligado
+    (api.deleteJob as any).mockImplementationOnce(() => new Promise(() => {}));
+    render(<ProjectsScreen onOpen={() => {}} onNew={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /excluir A1/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /apagar mesmo assim/i }));
+    const aviso = await screen.findByRole("alertdialog", { name: /confirmar exclusão de A1/i });
+
+    fireEvent.keyDown(aviso, { key: "Escape" });
+
+    expect(screen.getByRole("alertdialog", { name: /confirmar exclusão de A1/i })).toBeInTheDocument();
+  });
+
   it("lista o que o projeto realmente tem, nomeando hook e receita de render", async () => {
     const api = await import("../api");
     const completo = { ...projeto, has_hook: true, has_recipe: true };

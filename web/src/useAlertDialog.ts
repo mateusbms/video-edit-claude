@@ -18,10 +18,16 @@ const SELETOR_FOCAVEL =
  * cada render — se o efeito rodasse de novo a cada mudança de identidade,
  * ele roubaria o foco do usuário no meio da interação, não só ao abrir.
  */
-export function useAlertDialog<T extends HTMLElement>(onClose: () => void) {
+export function useAlertDialog<T extends HTMLElement>(onClose: () => void, busy = false) {
   const ref = useRef<T>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // `busy` também vai numa ref, pelo mesmo motivo de `onClose`: o Esc precisa
+  // ler o valor atual sem re-rodar o efeito (o que roubaria o foco). Com uma
+  // operação em andamento, os botões do diálogo desabilitam — e o Esc não
+  // pode burlar isso fechando o diálogo no meio da operação.
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -35,7 +41,7 @@ export function useAlertDialog<T extends HTMLElement>(onClose: () => void) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onCloseRef.current();
+        if (!busyRef.current) onCloseRef.current();
         return;
       }
       if (e.key !== "Tab") return;

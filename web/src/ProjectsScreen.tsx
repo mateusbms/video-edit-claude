@@ -66,7 +66,7 @@ const ConfirmarExclusao: React.FC<{
   onConfirmar: () => void;
   onDesistir: () => void;
 }> = ({ job, emAndamento, onConfirmar, onDesistir }) => {
-  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir, emAndamento);
   return (
     <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`confirmar exclusão de ${job.slug}`}
          className="rounded border border-red-800 bg-red-950/40 p-3 text-sm space-y-2">
@@ -105,7 +105,7 @@ const ConfirmarLiberar: React.FC<{
   onConfirmar: () => void;
   onDesistir: () => void;
 }> = ({ job, emAndamento, onConfirmar, onDesistir }) => {
-  const ref = useAlertDialog<HTMLDivElement>(onDesistir);
+  const ref = useAlertDialog<HTMLDivElement>(onDesistir, emAndamento);
   return (
     <div ref={ref} role="alertdialog" aria-modal="true" aria-label={`confirmar liberar espaço de ${job.slug}`}
          className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
