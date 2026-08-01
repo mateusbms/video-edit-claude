@@ -6,6 +6,33 @@ import { formatSeconds, percentage } from "../util";
 import type { CutResult, CutParams } from "../types";
 import type { StepProps } from "../App";
 
+// Parágrafo compartilhado pelos dois diálogos de confirmação (re-detectar
+// pausas e corte manual): lista o que será descartado, com a variante
+// conservadora para quando não sabemos o que o projeto tem (aPerder === null).
+const AvisoDescarte: React.FC<{
+  acao: string; // primeira frase, própria de cada botão
+  aPerder: string[] | null;
+  perdeTranscricao: boolean;
+}> = ({ acao, aPerder, perdeTranscricao }) => (
+  <p className="text-amber-200">
+    {aPerder === null ? (
+      <>
+        Não foi possível confirmar o que este projeto já tem salvo. {acao}, então{" "}
+        <strong>a transcrição, os textos, as sugestões e a receita de render</strong>{" "}
+        seriam descartados, se existirem — as legendas ficariam fora de sincronia
+        com o vídeo novo.
+      </>
+    ) : (
+      <>
+        {acao}, então <strong>{aPerder.join(", ")}</strong>{" "}
+        {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
+        legendas ficariam fora de sincronia com o vídeo novo.
+        {perdeTranscricao && " Você vai precisar transcrever outra vez."}
+      </>
+    )}
+  </p>
+);
+
 export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [params, setParams] = useState<CutParams>({
     silence_threshold_db: -30, padding: 0.1, min_silence: 0.5,
@@ -48,6 +75,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // sozinho.
   const [carregandoJob, setCarregandoJob] = useState(true);
   const [confirmandoRefino, setConfirmandoRefino] = useState(false);
+  const [confirmandoCorte, setConfirmandoCorte] = useState(false);
 
   // O wizard monta um passo por vez (RecordedWizard renderiza só o atual), então
   // sair para a Transcrição e voltar destrói este componente. Sem reler o
@@ -100,7 +128,16 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
   const removeRange = (i: number) => setRemoveList((l) => l.filter((_, k) => k !== i));
 
+  const pedirParaCortar = () => {
+    // mesmo portão do pedirParaAplicar: confirmar quando há o que perder — ou
+    // quando não sabemos (aPerder === null), que erra para o lado seguro
+    setConfirmandoRefino(false); // um diálogo por vez
+    if (aPerder === null || aPerder.length > 0) { setConfirmandoCorte(true); return; }
+    onCut();
+  };
+
   const pedirParaAplicar = () => {
+    setConfirmandoCorte(false); // um diálogo por vez
     if (removeList.length === 0) return;
     // aPerder === null: getJob nunca respondeu com sucesso (falhou, ou o
     // botão foi habilitado antes da hora por algum caminho futuro). O lado
@@ -142,6 +179,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   };
 
   const onCut = async () => {
+    setConfirmandoCorte(false);
     setBusy(true); setErr(null); setResult(null); setProg(null);
     try {
       await streamSSE(`/api/jobs/${slug}/cut`, {
@@ -155,6 +193,13 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
           // o corte reescreveu o trimmed.mp4: nova versão para o preview não
           // reaproveitar o vídeo do corte anterior
           setTrimmedVersion(r.trimmed_mtime ?? 0);
+          // o corte apagou os derivados (DERIVADOS_DO_TRIMMED); avisar de
+          // novo no próximo clique seria mentira — igual ao refino
+          setAPerder([]);
+          setPerdeTranscricao(false);
+          // as marcações antigas referenciam a timeline do trimmed anterior
+          setRemoveList([]);
+          setMarkStart(null);
         },
         error: (d) => setErr(d.detail ?? "erro no corte"),
       });
@@ -176,10 +221,27 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       <Slider label="Silêncio mínimo (s)" value={params.min_silence}
         min={0.2} max={2.0} step={0.1} format={(n) => `${n.toFixed(1)} s`}
         onChange={(n) => setParams({ ...params, min_silence: n })} />
-      <button onClick={onCut} disabled={busy || !temSource}
+      <button onClick={pedirParaCortar} disabled={busy || !temSource || carregandoJob}
         className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
         {busy ? "Cortando..." : "Detectar pausas"}
       </button>
+      {confirmandoCorte && (
+        <div role="alertdialog" aria-label="confirmar nova detecção de pausas"
+             className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
+          <AvisoDescarte acao="Detectar pausas refaz o corte a partir do vídeo original"
+                         aPerder={aPerder} perdeTranscricao={perdeTranscricao} />
+          <div className="flex gap-2">
+            <button onClick={onCut} disabled={busy}
+                    className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">
+              Descartar e cortar
+            </button>
+            <button onClick={() => setConfirmandoCorte(false)} disabled={busy}
+                    className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">
+              Desistir
+            </button>
+          </div>
+        </div>
+      )}
       {!temSource && (
         <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
           {result ? (
@@ -271,27 +333,8 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
                 {confirmandoRefino && (
                   <div role="alertdialog" aria-label="confirmar corte manual"
                        className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm space-y-2">
-                    <p className="text-amber-200">
-                      {aPerder === null ? (
-                        <>
-                          Não foi possível confirmar o que este projeto já tem salvo.
-                          Cortar de novo encurta o vídeo, então{" "}
-                          <strong>a transcrição, os textos, as sugestões e a receita de
-                          render</strong>{" "}
-                          seriam descartados, se existirem — as legendas ficariam fora
-                          de sincronia com o vídeo novo.
-                        </>
-                      ) : (
-                        <>
-                          Cortar de novo encurta o vídeo, então{" "}
-                          <strong>{aPerder.join(", ")}</strong>{" "}
-                          {aPerder.length > 1 ? "serão descartados" : "será descartado"} — as
-                          legendas ficariam fora de sincronia com o vídeo novo.
-                          {perdeTranscricao &&
-                            " Você vai precisar transcrever outra vez."}
-                        </>
-                      )}
-                    </p>
+                    <AvisoDescarte acao="Cortar de novo encurta o vídeo"
+                                   aPerder={aPerder} perdeTranscricao={perdeTranscricao} />
                     <div className="flex gap-2">
                       <button onClick={applyRefine} disabled={refining}
                               className="px-3 py-1 bg-amber-800 rounded disabled:opacity-40">

@@ -29,7 +29,16 @@ import { CutsStep } from "../steps/CutsStep";
 const props = { slug: "v1", setSlug: () => {}, next: () => {}, back: () => {} };
 beforeEach(() => vi.clearAllMocks());
 
+const comTrabalho = {
+  config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+  has_source: true, has_transcript: true, has_overlays: true,
+  has_suggestions: false, has_recipe: true,
+};
+
 async function doCut(container: HTMLElement) {
+  // o botão fica desabilitado enquanto o getJob não responde (carregandoJob)
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled());
   fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
   await waitFor(() => expect(screen.getByText(/trechos mantidos/i)).toBeInTheDocument());
   return container.querySelector("video") as HTMLVideoElement;
@@ -197,23 +206,32 @@ describe("CutsStep — projeto sem o vídeo original", () => {
 });
 
 describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
-  const comTrabalho = {
-    config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
-    has_source: true, has_transcript: true, has_overlays: true,
-    has_suggestions: false, has_recipe: true,
-  };
+  // Com o Detectar pausas também invalidando os derivados, um corte feito
+  // nesta sessão zera o aviso — o caminho real para ter algo a perder E um
+  // corte na tela é reabrir um projeto que já tem corte salvo.
+  async function montarComCorteSalvo() {
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await screen.findByText(/trechos mantidos/i);
+    return container;
+  }
 
   async function marcarUmTrecho(container: HTMLElement) {
-    const video = await doCut(container);
+    const video = container.querySelector("video") as HTMLVideoElement;
     video.currentTime = 1;
     fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
     video.currentTime = 3;
     fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /aplicar cortes/i })).not.toBeDisabled());
   }
 
   it("pergunta antes de aplicar, listando o que será descartado", async () => {
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
 
@@ -224,7 +242,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
 
   it("confirmar aplica de verdade", async () => {
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
     fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
@@ -235,7 +253,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
 
   it("desistir não aplica nada e mantém os trechos marcados", async () => {
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
     fireEvent.click(await screen.findByRole("button", { name: /desistir/i }));
@@ -250,7 +268,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
       has_source: true, has_transcript: false, has_overlays: false,
       has_suggestions: false, has_recipe: false,
     } as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
 
@@ -265,7 +283,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
   // lados.
   it("com has_transcript, avisa que será preciso transcrever de novo", async () => {
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
 
@@ -278,7 +296,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
       has_source: true, has_transcript: false, has_overlays: true,
       has_suggestions: false, has_recipe: false,
     } as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
 
@@ -289,7 +307,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
   it("o segundo corte da mesma sessão não avisa de novo", async () => {
     // o refino já apagou tudo; avisar outra vez seria mentira
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
     fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
@@ -376,7 +394,7 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
   // contra uma regressão futura
   it("refino que falha mantém o aviso para a próxima tentativa", async () => {
     getJob.mockResolvedValueOnce(comTrabalho as any);
-    const { container } = render(<CutsStep {...props} />);
+    const container = await montarComCorteSalvo();
     await marcarUmTrecho(container);
 
     streamSSE.mockImplementationOnce(async (_url: string, _opts: any, on: any) => {
@@ -389,5 +407,107 @@ describe("CutsStep — aviso antes do corte manual destruir trabalho", () => {
     fireEvent.click(screen.getByRole("button", { name: /aplicar cortes/i }));
     expect(await screen.findByText(/transcrição/i)).toBeInTheDocument();
     expect(streamSSE.mock.calls.filter((c) => String(c[0]).includes("/refine")).length).toBe(1);
+  });
+});
+
+describe("CutsStep — aviso antes do Detectar pausas destruir trabalho", () => {
+  // stage_cut agora invalida transcript/recipe/overlays/suggestions (mesma
+  // invalidação do refino), então o botão confirma antes quando há o que
+  // perder — o mesmo portão do "Aplicar cortes".
+  async function esperarBotao() {
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled());
+    return screen.getByRole("button", { name: /detectar pausas/i });
+  }
+
+  it("pergunta antes de detectar de novo, listando o que será descartado", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+
+    expect(await screen.findByText(/refaz o corte/i)).toBeInTheDocument();
+    expect(screen.getByText(/transcrição/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/cut"))).toBe(false);
+  });
+
+  it("confirmar corta de verdade", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+
+    expect(await screen.findByText(/trechos mantidos/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/cut"))).toBe(true);
+  });
+
+  it("desistir não corta nada", async () => {
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+    fireEvent.click(await screen.findByRole("button", { name: /desistir/i }));
+
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/cut"))).toBe(false);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("sem nada a perder, corta direto e não pergunta", async () => {
+    // getJob padrão: sem flags has_* → aPerder = []
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+
+    expect(await screen.findByText(/trechos mantidos/i)).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("com getJob rejeitando, confirma sem saber o que há a perder", async () => {
+    getJob.mockRejectedValueOnce(new Error("falha de rede"));
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+
+    expect(await screen.findByText(/não foi possível confirmar/i)).toBeInTheDocument();
+    expect(screen.getByText(/receita de render/i)).toBeInTheDocument();
+    expect(streamSSE.mock.calls.some((c) => String(c[0]).includes("/cut"))).toBe(false);
+  });
+
+  it("depois de um corte confirmado, re-detectar não pergunta de novo", async () => {
+    // o corte acabou de apagar os derivados; avisar outra vez seria mentira
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    render(<CutsStep {...props} />);
+    fireEvent.click(await esperarBotao());
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+    await screen.findByText(/trechos mantidos/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
+    await waitFor(() => {
+      const cuts = streamSSE.mock.calls.filter((c) => String(c[0]).includes("/cut"));
+      expect(cuts.length).toBe(2);
+    });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("o corte novo limpa as marcações da timeline antiga", async () => {
+    // marcações de corte manual referenciam o trimmed anterior, que o
+    // Detectar pausas acabou de substituir
+    getJob.mockResolvedValueOnce(comTrabalho as any);
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 6,
+      segments: [{ start: 0, end: 6 }], trimmed_mtime: 5,
+    } as any);
+    const { container } = render(<CutsStep {...props} />);
+    await screen.findByText(/trechos mantidos/i);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    video.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /marcar início/i }));
+    video.currentTime = 3;
+    fireEvent.click(screen.getByRole("button", { name: /marcar fim/i }));
+    expect(screen.getByRole("button", { name: /remover trecho 1/i })).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /detectar pausas/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /detectar pausas/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /descartar e cortar/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /remover trecho 1/i })).not.toBeInTheDocument());
   });
 });
