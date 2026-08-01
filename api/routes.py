@@ -33,6 +33,7 @@ from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FORMAT_KEYS
 from pipeline.silence import Segment
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_refine, stage_transcribe
+from pipeline.variants import criar_variacao
 
 router = APIRouter(prefix="/api")
 
@@ -136,6 +137,43 @@ async def create_job(
         raise HTTPException(status_code=500, detail=f"ingest falhou: {e}")
     state = get_state(slug, jobs_root)
     return {"slug": slug, "probe": state.probe.model_dump() if state.probe else None}
+
+
+@router.post("/jobs/{slug}/variants")
+async def create_variant(slug: str, novo_slug: str = Form(...),
+                         file: UploadFile = File(...)):
+    """Variação de hook (spec 2026-08-01): valida tudo ANTES de gravar
+    qualquer byte; o pipeline roda com progresso SSE e faz rollback sozinho."""
+    jobs_root, *_ = _roots()
+    matriz_dir = _dir_do_job(slug, jobs_root)
+    if not matriz_dir.is_dir():
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    cfg = load_json(matriz_dir / "job.config.json") if (matriz_dir / "job.config.json").exists() else {}
+    if cfg.get("papel") != "matriz":
+        raise HTTPException(status_code=409,
+                            detail="este projeto não é uma matriz de variações de hook")
+    if not (matriz_dir / "trimmed.mp4").exists() or not (matriz_dir / "transcript.json").exists():
+        raise HTTPException(status_code=409,
+                            detail="transcreva o corpo antes de criar variações")
+    var_dir = _dir_do_job(novo_slug, jobs_root)
+    if tem_trabalho(var_dir):
+        raise HTTPException(status_code=409,
+                            detail=f"já existe um projeto '{novo_slug}' com trabalho salvo")
+
+    # o upload entra DENTRO do diretório da variação: o rollback de
+    # criar_variacao (rmtree) limpa o clipe junto em caso de falha
+    var_dir.mkdir(parents=True, exist_ok=True)
+    sufixo = Path(file.filename or "").suffix or ".mp4"
+    hook_path = var_dir / f"hook_upload{sufixo}"
+    with hook_path.open("wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    def work(progress_cb):
+        criar_variacao(matriz_dir, jobs_root, novo_slug, str(hook_path),
+                       progress_cb=progress_cb)
+        return {"slug": novo_slug}
+
+    return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
 
 
 @router.get("/jobs/{slug}")
