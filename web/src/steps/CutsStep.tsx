@@ -89,6 +89,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // único leitor dele. Oferecer o botão só para o servidor recusar com 409
   // seria empurrar o usuário para um beco.
   const [temSource, setTemSource] = useState(true);
+  // Slug da matriz que originou esta variação (spec 2026-08-01), ou "" para
+  // projeto normal. Uma variação nasce sem source.mp4 de propósito — o vídeo
+  // já foi cortado e montado na criação — então o aviso de !temSource precisa
+  // explicar a origem em vez de falar em "liberar espaço", que nunca aconteceu.
+  const [origemMatriz, setOrigemMatriz] = useState("");
   // O que o refino vai apagar. stage_refine remove transcrição, textos,
   // sugestões e recipe de propósito — o vídeo encurta e as legendas sairiam de
   // sincronia. Não mudamos isso; só avisamos, e só quando há o que perder.
@@ -122,6 +127,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (!vivo) return;
       if (j?.config) setParams(j.config);
       setTemSource(j?.has_source !== false);
+      setOrigemMatriz(j?.origem_matriz ?? "");
       setPerdeTranscricao(!!j?.has_transcript);
       setAPerder(oQueSePerde(j ?? {}));
     }).catch(() => {
@@ -279,7 +285,17 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       )}
       {!temSource && (
         <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
-          {result ? (
+          {origemMatriz ? (
+            // Variação de hook (spec 2026-08-01): nasce com trimmed.mp4 já
+            // composto (hook + corpo da matriz) e nunca teve source.mp4 — o
+            // aviso de "liberar espaço" seria falso, porque nada foi liberado
+            // aqui; a explicação certa é a origem.
+            <>
+              Esta variação já nasce cortada e montada a partir da matriz{" "}
+              <strong>{origemMatriz}</strong> — não há vídeo original para
+              re-detectar pausas. Os cortes manuais continuam funcionando.
+            </>
+          ) : result ? (
             <>
               O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
               então não dá mais para detectar pausas aqui. Os cortes manuais sobre o vídeo

@@ -200,6 +200,24 @@ describe("CutsStep — projeto sem o vídeo original", () => {
     expect(screen.queryByText(/cortes manuais.*continuam/i)).not.toBeInTheDocument();
   });
 
+  // variação de hook (spec 2026-08-01): nasce sem source.mp4 de propósito —
+  // o vídeo já foi cortado e montado na criação. O aviso de "liberar espaço"
+  // seria falso aqui; a mensagem certa explica a origem na matriz.
+  it("variação sem source explica a origem, não fala em liberar espaço", async () => {
+    getJob.mockResolvedValueOnce({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false, origem_matriz: "corpo",
+    } as any);
+    getCuts.mockResolvedValueOnce({
+      original_duration: 10, trimmed_duration: 10,
+      segments: [{ start: 0, end: 10 }], trimmed_mtime: 5,
+    } as any);
+    render(<CutsStep {...props} />);
+    expect(await screen.findByText(/nasce.*montad/i)).toBeInTheDocument();
+    expect(screen.getByText("corpo", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.queryByText(/liberar espaço/i)).not.toBeInTheDocument();
+  });
+
   it("os cortes manuais continuam disponíveis sem o original", async () => {
     getJob.mockResolvedValueOnce({
       config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
