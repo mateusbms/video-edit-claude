@@ -1,5 +1,10 @@
 """Golden do deslocamento — a única matemática nova das variações de hook.
 Errar aqui é ressuscitar a corrupção silenciosa de legendas (spec 2026-08-01)."""
+from pathlib import Path
+
+import pytest
+
+from pipeline.job import init_job, load_json, write_json
 from pipeline.variants import deslocar_overlays, fundir_transcricoes
 
 
@@ -35,3 +40,108 @@ def test_deslocar_overlays_soma_frames_e_preserva_o_resto():
     assert out[0]["fromFrame"] == 30 + 96                        # round(3.2*30)
     assert out[0]["durationInFrames"] == 20 and out[0]["x"] == 0.5
     assert ovs[0]["fromFrame"] == 30                             # não muta
+
+
+def _matriz_pronta(tmp_path):
+    """Matriz mínima: trimmed + probe + transcript + textos + config."""
+    jobs_root = tmp_path / "jobs"
+    m = init_job(jobs_root, "corpo")
+    (m.dir / "trimmed.mp4").write_bytes(b"corpo trimmed")
+    write_json(m.dir / "trimmed.probe.json",
+               {"width": 1080, "height": 1920, "fps": 30.0, "duration": 8.0, "nb_frames": 240})
+    write_json(m.dir / "transcript.json", [_linha("corpo", 1.0, 2.0)])
+    write_json(m.dir / "overlays.json", [{"id": "ov_a", "type": "text", "text": "M",
+                                          "fromFrame": 30, "durationInFrames": 20}])
+    write_json(m.dir / "suggestions.json", [{"id": "sug_a", "text": "S",
+                                             "fromFrame": 60, "durationInFrames": 30}])
+    write_json(m.dir / "suggest-defaults.json", {"x": 0.5, "y": 0.12})
+    cfg = load_json(m.dir / "job.config.json")
+    cfg.update({"papel": "matriz", "title": "Meu corpo", "silence_threshold_db": -35.0})
+    write_json(m.dir / "job.config.json", cfg)
+    return jobs_root, m
+
+
+def _variacao_falsa(monkeypatch, dur_hook=3.2, dur_composto=11.2):
+    """Mocka ffmpeg/whisper de pipeline.variants; devolve os probes usados."""
+    from pipeline import variants
+
+    class _Meta:
+        width, height, fps = 1080, 1920, 30.0
+        def __init__(self, duration): self.duration = duration; self.nb_frames = int(duration * 30)
+
+    probes = {}
+    def fake_probe(p):
+        # hook cortado tem dur_hook; qualquer outro (o composto) tem dur_composto
+        meta = _Meta(dur_hook if "hook" in Path(p).name else dur_composto)
+        probes[Path(p).name] = meta
+        return meta
+
+    monkeypatch.setattr(variants, "detect_silences", lambda *a, **k: [])
+    monkeypatch.setattr(variants, "cut_segments",
+                        lambda src, seg, dest, **k: Path(dest).write_bytes(b"hook cortado"))
+    monkeypatch.setattr(variants, "probe_video", fake_probe)
+    monkeypatch.setattr(variants, "_concat_hook_e_corpo",
+                        lambda hook, corpo, dest: Path(dest).write_bytes(b"composto"))
+    monkeypatch.setattr(variants, "transcribe_audio",
+                        lambda *a, **k: [_linha("oi", 0.0, 0.8)])
+    return probes
+
+
+def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa(monkeypatch)
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+
+    v = jobs_root / "corpo-h1"
+    assert (v / "trimmed.mp4").read_bytes() == b"composto"
+    assert not (v / "source.mp4").exists()                       # sem source, de propósito
+    probe = load_json(v / "trimmed.probe.json")
+    assert probe["duration"] == 11.2
+    assert load_json(v / "cuts.json") == [{"start": 0, "end": 11.2}]
+
+    t = load_json(v / "transcript.json")
+    assert t[0]["text"] == "oi"                                  # hook primeiro
+    assert t[1]["start"] == 1.0 + 3.2                            # corpo deslocado
+    assert load_json(v / "overlays.json")[0]["fromFrame"] == 30 + round(3.2 * 30)
+    assert load_json(v / "suggestions.json")[0]["fromFrame"] == 60 + round(3.2 * 30)
+    assert load_json(v / "suggest-defaults.json") == {"x": 0.5, "y": 0.12}
+    assert not (v / "hook.json").exists()                        # texto fica para o usuário
+
+    cfg = load_json(v / "job.config.json")
+    assert cfg["papel"] == "normal"
+    assert cfg["origem_matriz"] == "corpo"
+    assert cfg["silence_threshold_db"] == -35.0                  # sliders herdados
+    assert cfg["title"] == "Meu corpo h1"                        # título + sufixo do slug
+    # temporários limpos
+    assert not any(p.name.startswith("hook") for p in v.iterdir())
+
+
+def test_criar_variacao_falha_no_meio_faz_rollback(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa(monkeypatch)
+    from pipeline import variants
+    def explode(*a, **k): raise RuntimeError("whisper caiu")
+    monkeypatch.setattr(variants, "transcribe_audio", explode)
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    with pytest.raises(RuntimeError, match="whisper caiu"):
+        criar_variacao(m.dir, jobs_root, "corpo-h2", str(tmp_path / "hook.mov"))
+    assert not (jobs_root / "corpo-h2").exists()                 # nada meio-nascido
+
+
+def test_criar_variacao_matriz_sem_overlays_nao_estoura(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao
+    jobs_root, m = _matriz_pronta(tmp_path)
+    (m.dir / "overlays.json").unlink()
+    (m.dir / "suggestions.json").unlink()
+    (m.dir / "suggest-defaults.json").unlink()
+    _variacao_falsa(monkeypatch)
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+    criar_variacao(m.dir, jobs_root, "corpo-h3", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h3"
+    assert not (v / "overlays.json").exists()
+    assert (v / "transcript.json").exists()
