@@ -77,6 +77,17 @@ class RefineParams(BaseModel):
     remove: list[CutSegmentOut] = Field(default_factory=list)
 
 
+class DetectLocalParams(BaseModel):
+    center: float
+
+
+class DetectLocalResult(BaseModel):
+    start: float
+    end: float
+    limpo_inicio: bool
+    limpo_fim: bool
+
+
 class CaptionStyleParams(BaseModel):
     fontSize: int = 48
     bottom: int = 120
