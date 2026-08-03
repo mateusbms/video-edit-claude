@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 
 from api.jobs import (
-    _tem_conteudo_lista, allowed_file_path, get_state, job_summary_minimo,
-    ProjetoNaoEncontradoError, suggest_hook,
+    ProjetoNaoEncontradoError,
+    _tem_conteudo_lista,
+    allowed_file_path,
+    get_state,
+    job_summary_minimo,
+    suggest_hook,
 )
 from api.models import ProbeOut
 
@@ -137,8 +141,8 @@ class TestTemConteudoLista:
 
 
 def test_get_state_variacao_expoe_recut(tmp_path, monkeypatch):
-    from pipeline.job import init_job, write_json, load_json
     from api.jobs import get_state
+    from pipeline.job import init_job, load_json, write_json
     jobs = tmp_path / "jobs"; jobs.mkdir()
     # matriz apta (trimmed + transcript)
     m = init_job(jobs, "corpo")
@@ -158,8 +162,8 @@ def test_get_state_variacao_expoe_recut(tmp_path, monkeypatch):
 
 
 def test_get_state_variacao_com_matriz_excluida(tmp_path):
-    from pipeline.job import init_job, write_json, load_json
     from api.jobs import get_state
+    from pipeline.job import init_job, load_json, write_json
     jobs = tmp_path / "jobs"; jobs.mkdir()
     v = init_job(jobs, "corpo-h1")
     (v.dir / "hook_source.mp4").write_bytes(b"h")

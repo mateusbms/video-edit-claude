@@ -17,13 +17,13 @@ from pipeline.concat import (
 )
 from pipeline.job import init_job, load_json, write_json
 from pipeline.probe import probe_video
-from pipeline.stages import DERIVADOS_DO_TRIMMED
 from pipeline.silence import (
     build_scale_filter,
     compute_kept_segments,
     cut_segments,
     detect_silences,
 )
+from pipeline.stages import DERIVADOS_DO_TRIMMED
 from pipeline.transcribe import transcribe_audio
 
 logger = logging.getLogger(__name__)
