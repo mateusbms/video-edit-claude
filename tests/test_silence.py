@@ -228,3 +228,38 @@ def test_fronteira_sem_pausa_nenhuma_cai_no_default_dos_dois_lados():
 def test_fronteira_default_clampa_nas_bordas_da_janela():
     r = fronteira_local([], center=21.05, w0=21.0, w1=23.0, default_raio=0.15)
     assert r["start"] == 21.0           # max(w0, center-default_raio)
+
+
+def test_detect_janela_desloca_timestamps_para_o_absoluto(monkeypatch):
+    from pipeline import silence
+
+    class _R:
+        # silencedetect reporta relativo ao slice (-ss antes de -i zera o PTS)
+        stderr = ("[silencedetect] silence_start: 0.100\n"
+                  "[silencedetect] silence_end: 0.500 | silence_duration: 0.4\n")
+
+    capturado = {}
+    def fake_run(cmd, capture_output, text):
+        capturado["cmd"] = cmd
+        return _R()
+    monkeypatch.setattr(silence.subprocess, "run", fake_run)
+
+    out = silence.detect_silences_janela("trimmed.mp4", center=22.0, raio=1.0,
+                                         noise_db=-30.0, min_silence=0.08)
+    # janela começa em 21.0 → 0.1/0.5 viram 21.1/21.5
+    assert out == [(21.1, 21.5)]
+    # a fatia foi pedida com -ss/-t e o filtro certo
+    cmd = capturado["cmd"]
+    assert "-ss" in cmd and "21.000" in cmd
+    assert "-t" in cmd and "2.000" in cmd
+    assert any("silencedetect=noise=-30.0dB:d=0.08" in a for a in cmd)
+
+
+def test_detect_janela_clampa_o_inicio_em_zero(monkeypatch):
+    from pipeline import silence
+    class _R: stderr = ""
+    cap = {}
+    monkeypatch.setattr(silence.subprocess, "run",
+                        lambda cmd, capture_output, text: (cap.setdefault("cmd", cmd), _R())[1])
+    silence.detect_silences_janela("t.mp4", center=0.3, raio=1.0)
+    assert "0.000" in cap["cmd"]        # -ss não fica negativo

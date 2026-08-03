@@ -130,6 +130,25 @@ def detect_silences(path: str, noise_db: float = -30.0, min_silence: float = 0.5
     return parse_silences(result.stderr)
 
 
+def detect_silences_janela(path: str, center: float, raio: float = 1.0,
+                           noise_db: float = -30.0, min_silence: float = 0.08):
+    """silencedetect só na janela [center-raio, center+raio] de `path`.
+
+    Usa -ss/-t ANTES de -i: o ffmpeg reseta o PTS da fatia, então os
+    silence_start/end vêm relativos ao início da janela — somamos `inicio` para
+    voltar ao tempo absoluto do trimmed. min_silence pequeno de propósito: pega
+    micro-pausas que o corte global (min_silence dos sliders) ignora."""
+    inicio = max(0.0, center - raio)
+    dur = 2 * raio
+    result = subprocess.run(
+        ["ffmpeg", "-ss", f"{inicio:.3f}", "-t", f"{dur:.3f}", "-i", path,
+         "-vn", "-af", f"silencedetect=noise={noise_db}dB:d={min_silence}",
+         "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    return [(s + inicio, e + inicio) for s, e in parse_silences(result.stderr)]
+
+
 def parse_ffmpeg_progress(line: str) -> float | None:
     """Segundos processados a partir de uma linha `out_time_us=` do -progress do ffmpeg."""
     line = line.strip()
