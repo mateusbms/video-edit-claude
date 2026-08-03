@@ -325,4 +325,24 @@ describe("OverlaysStep", () => {
       spy.mockRestore();
     }
   });
+
+  it("na matriz não busca nem desenha o hook e o heading é '4. Textos'", async () => {
+    const calls = mockFetchWithJob({ papel: "matriz" });
+    render(<OverlaysStep {...props} />);
+    expect(await screen.findByText("4. Textos")).toBeInTheDocument();
+    // dá tempo do efeito de mount terminar antes de checar o que NÃO foi chamado
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.match(/\/jobs\/.+$/) && (!c.init || !c.init.method))).toBe(true));
+    expect(calls.some((c) => c.url.endsWith("/hook") && (!c.init || !c.init.method))).toBe(false);
+    expect(screen.queryByText("HOOK")).not.toBeInTheDocument();
+  });
+
+  it("num projeto normal mantém '5. Textos' e busca o hook", async () => {
+    const calls = mockFetchWithJob({ papel: "normal" });
+    render(<OverlaysStep {...props} />);
+    expect(await screen.findByText("5. Textos")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith("/hook") && (!c.init || !c.init.method))).toBe(true));
+    expect(await screen.findByText("HOOK")).toBeInTheDocument();
+  });
 });
