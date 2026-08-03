@@ -98,8 +98,10 @@ def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
     v = jobs_root / "corpo-h1"
     assert (v / "trimmed.mp4").read_bytes() == b"composto"
     assert not (v / "source.mp4").exists()                       # sem source, de propósito
+    assert (v / "hook_source.mp4").read_bytes() == b"hook bruto"  # clipe bruto preservado
     probe = load_json(v / "trimmed.probe.json")
     assert probe["duration"] == 11.2
+    assert load_json(v / "probe.json")["duration"] == 11.2        # probe.json = composto
     assert load_json(v / "cuts.json") == [{"start": 0, "end": 11.2}]
 
     t = load_json(v / "transcript.json")
@@ -115,8 +117,9 @@ def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
     assert cfg["origem_matriz"] == "corpo"
     assert cfg["silence_threshold_db"] == -35.0                  # sliders herdados
     assert cfg["title"] == "Meu corpo h1"                        # título + sufixo do slug
-    # temporários limpos
-    assert not any(p.name.startswith("hook") for p in v.iterdir())
+    assert cfg["hook_linhas"] == 1                               # 1 linha de hook (fake transcribe)
+    # temporário do corte de hook limpo; hook_source.mp4 permanece
+    assert not (v / "hook_trimmed.tmp.mp4").exists()
 
 
 def test_criar_variacao_falha_no_meio_faz_rollback(tmp_path, monkeypatch):
