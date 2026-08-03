@@ -2,10 +2,9 @@
 
 Data: 2026-08-01
 
-> **Status: DIREÇÃO CAPTURADA, brainstorm a completar.** O caminho foi
-> escolhido (corte por silêncio local), mas as perguntas de design abaixo
-> ainda não foram respondidas. Retomar pelo brainstorm a partir de "Perguntas
-> em aberto" antes de escrever o plano.
+> **Status: brainstorm concluído, pronto para virar plano.** As perguntas de
+> design foram respondidas (ver "Decisões do brainstorm"). Feature separada da
+> edição escopada da variação (`2026-08-01-variacao-edicao-escopada-design.md`).
 
 ## Problema
 
@@ -49,24 +48,60 @@ Complemento possível (não exclusivo): **nudge frame a frame** nas bordas
 propostas (◀/▶, teclas `,`/`.`), com o player saltando para o frame exato, para
 o caso de o trecho ruim não ter silêncio claro em volta (fala contínua).
 
-## Perguntas em aberto (responder no brainstorm da próxima sessão)
+## Decisões do brainstorm
 
-1. **Como o usuário indica a região?** Um clique único perto do problema (o
-   sistema abre uma janela em volta)? Ou marca início/fim grosso e pede
-   "refinar"? Ou arrasta numa timeline com zoom?
-2. **Tamanho da janela de re-análise.** Fixo (ex.: ±1s do clique)? Adaptativo?
-3. **O que define a fronteira do corte na janela.** Os mínimos locais de
-   volume (instantes mais silenciosos)? As micro-pausas sub-threshold que a
-   detecção global ignorou (mais curtas que `min_silence`)? Um threshold local
-   recalculado?
-4. **Fallback quando não há silêncio na janela** (o "erro" é fala contínua sem
-   pausa em volta). Cai no nudge frame a frame? Avisa que não achou fronteira
-   limpa?
-5. **Backend vs front.** A re-análise local roda no servidor (re-`detect_silences`
-   numa janela do trimmed, mais preciso) ou no front (Web Audio API sobre o
-   trecho, resposta instantânea, menos preciso)?
-6. **Preview da emenda.** Mostrar "último frame que fica antes" × "primeiro
-   frame que fica depois" antes de aplicar, para confirmar corte limpo?
+1. **Indicação = clique único (centro).** No passo Cortes, o usuário dá
+   play/pausa perto do trecho ruim e clica **"Remover trecho aqui"**; o
+   `currentTime` do player vira o **centro** da janela de re-análise. Casa com
+   "aponto aproximadamente onde está" e reusa o player que já existe. O
+   "Marcar início/fim" manual **continua disponível** ao lado (não é
+   substituído) — quem quiser marcar à mão pode.
+2. **Janela fixa de ±1s** (2s no total) em torno do clique, clampada às bordas
+   do vídeo. Simples e previsível; cobre respiro/"é-ãã" típicos. Adaptativo
+   fica fora do escopo (imprevisível, difícil de testar/explicar).
+3. **Fronteira = micro-pausas que bracketam o clique.** Na janela, re-detecta
+   silêncios com `min_silence` bem menor que o global (pega micro-pausas que o
+   corte global ignora) e o mesmo (ou levemente mais alto) noise floor. A
+   fronteira do corte é o **ponto mais silencioso (meio da micro-pausa)
+   imediatamente antes** e **imediatamente depois** do instante apontado. Se o
+   clique cair dentro de uma pausa, expande para a próxima pausa de cada lado.
+   Reusa `parse_silences`/`detect_silences`.
+4. **Fallback sem silêncio = default + nudge.** Se faltar micro-pausa de um dos
+   lados dentro da janela (fala contínua), a borda vira o próprio instante
+   apontado ± um default pequeno, e o **nudge frame-a-frame** (sempre presente)
+   termina o ajuste. O front avisa discretamente: "não achei fronteira limpa
+   deste lado — ajuste no frame".
+5. **Backend (analyze-only).** Nova rota `POST /api/jobs/{slug}/detect-local`
+   recebe `{center: float}` e devolve `{start, end}` **sem cortar nada**. Roda
+   `silencedetect` só na janela `[center−1s, center+1s]` via `-ss`/`-t` no
+   `trimmed.mp4`, deslocando os timestamps de volta ao absoluto. Frame-preciso,
+   barato (~2s de áudio), sem código de análise de áudio no front.
+6. **Preview da emenda = sim.** Antes de aplicar, o front mostra **dois
+   quadros** — *último frame que fica antes* × *primeiro frame que fica
+   depois* — com as setas de nudge (◀/▶, teclas `,`/`.`, ±1 frame). O player
+   busca cada tempo e `requestVideoFrameCallback` trava no frame exato. Só
+   depois o botão **"Aplicar corte"**.
+
+## Aplicação e invalidação
+
+A fronteira confirmada (`{start, end}`) entra na `removeList`/`/refine`
+(`stage_refine`) já existente, que encurta o vídeo, invalida
+`DERIVADOS_DO_TRIMMED` e reusa o diálogo `ConfirmarDescarte`. **Nada novo no
+caminho de aplicação** — a feature só adiciona a *detecção da fronteira* e a
+*UI de apontar/pré-visualizar*. Vale para **qualquer projeto**, sobre o
+`trimmed.mp4`.
+
+## Testes
+
+- **Backend:** golden da detecção na janela — offset absoluto correto (timestamps
+  do slice mapeados de volta); escolhe as pausas que bracketam o clique; clique
+  dentro de uma pausa expande para os lados; fallback quando não há pausa de um
+  dos lados. Rota `/detect-local`: 200 com `{start, end}`; clamp nas bordas do
+  vídeo; 404/409 sem `trimmed.mp4`.
+- **Front:** clicar "Remover trecho aqui" chama `detectLocal(center)`; o preview
+  mostra os dois frames; o nudge soma/subtrai 1 frame nas bordas; "Aplicar corte"
+  manda pelo `/refine` com o diálogo de descarte; o caminho de fallback mostra o
+  aviso e deixa o nudge terminar.
 
 ## Restrições conhecidas
 
