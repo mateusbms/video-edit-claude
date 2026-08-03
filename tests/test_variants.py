@@ -122,6 +122,69 @@ def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
     assert not (v / "hook_trimmed.tmp.mp4").exists()
 
 
+def _variacao_falsa_deltas(monkeypatch, deltas, dur_composto=11.2):
+    """Como _variacao_falsa, mas o hook cortado tem duração de `deltas` em
+    sequência (um valor consumido por chamada de probe do hook cortado)."""
+    from pipeline import variants
+
+    class _Meta:
+        width, height, fps = 1080, 1920, 30.0
+        def __init__(self, duration): self.duration = duration; self.nb_frames = int(duration * 30)
+
+    fila = list(deltas)
+    def fake_probe(p):
+        nome = Path(p).name
+        if nome == "hook_trimmed.tmp.mp4":
+            return _Meta(fila.pop(0))       # delta do corte corrente
+        if "hook" in nome:                  # hook_source.mp4 (bruto)
+            return _Meta(9.9)
+        return _Meta(dur_composto)          # composto
+
+    monkeypatch.setattr(variants, "detect_silences", lambda *a, **k: [])
+    monkeypatch.setattr(variants, "cut_segments",
+                        lambda src, seg, dest, **k: Path(dest).write_bytes(b"hook cortado"))
+    monkeypatch.setattr(variants, "probe_video", fake_probe)
+    monkeypatch.setattr(variants, "_concat_hook_e_corpo",
+                        lambda hook, corpo, dest: Path(dest).write_bytes(b"composto"))
+    monkeypatch.setattr(variants, "transcribe_audio",
+                        lambda *a, **k: [_linha("oi", 0.0, 0.8)])
+
+
+def test_recompor_hook_desloca_da_base_sem_drift(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao, recompor_hook
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa_deltas(monkeypatch, deltas=[3.2, 5.0])
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+    assert load_json(v / "transcript.json")[1]["start"] == 1.0 + 3.2
+
+    # segundo corte com delta diferente: o corpo desloca da BASE (1.0), não do
+    # já deslocado — 1.0 + 5.0, nunca 1.0 + 3.2 + 5.0
+    hook_linhas = recompor_hook(v, m.dir)
+    assert hook_linhas == 1
+    assert load_json(v / "transcript.json")[1]["start"] == 1.0 + 5.0
+    assert load_json(v / "overlays.json")[0]["fromFrame"] == 30 + round(5.0 * 30)
+    assert load_json(v / "job.config.json")["hook_linhas"] == 1
+
+
+def test_recompor_hook_invalida_edit_recipe_e_preserva_hook_json(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao, recompor_hook
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa_deltas(monkeypatch, deltas=[3.2, 3.2])
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+    write_json(v / "edit-recipe.json", {"stale": True})   # derivado do trimmed
+    write_json(v / "hook.json", {"title": "meu hook"})     # texto do usuário
+
+    recompor_hook(v, m.dir)
+
+    assert not (v / "edit-recipe.json").exists()           # invalidado
+    assert load_json(v / "hook.json") == {"title": "meu hook"}  # sobrevive
+
+
 def test_criar_variacao_falha_no_meio_faz_rollback(tmp_path, monkeypatch):
     from pipeline.variants import criar_variacao
     jobs_root, m = _matriz_pronta(tmp_path)

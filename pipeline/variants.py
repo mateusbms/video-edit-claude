@@ -17,6 +17,7 @@ from pipeline.concat import (
 )
 from pipeline.job import init_job, load_json, write_json
 from pipeline.probe import probe_video
+from pipeline.stages import DERIVADOS_DO_TRIMMED
 from pipeline.silence import (
     build_scale_filter,
     compute_kept_segments,
@@ -176,3 +177,24 @@ def criar_variacao(matriz_dir: Path, jobs_root: Path, novo_slug: str,
         # rollback: nada meio-nascido na lista
         shutil.rmtree(var.dir, ignore_errors=True)
         raise
+
+
+def recompor_hook(var_dir: Path, matriz_dir: Path, progress_cb=None) -> int:
+    """Re-corta o hook de uma variação existente a partir do hook_source.mp4
+    guardado e do corpo ATUAL da matriz, e recompõe. Reusa _compor_variacao
+    (mesma base da matriz, sem drift). Invalida os derivados do trimmed (a
+    transcrição/textos editados da variação + a recipe) — o texto do hook
+    (hook.json) sobrevive de propósito, como no stage_cut. Grava o novo
+    hook_linhas no config e o devolve. O caller (rota) já validou aptidão e
+    persistiu os novos sliders no config."""
+    cfg = load_json(var_dir / "job.config.json")
+    hook_source = var_dir / "hook_source.mp4"
+    # invalida os derivados do trimmed; _compor re-escreve os de conteúdo a
+    # partir da base da matriz, sobrando só edit-recipe.json apagado
+    for stale in DERIVADOS_DO_TRIMMED:
+        (var_dir / stale).unlink(missing_ok=True)
+    hook_linhas = _compor_variacao(var_dir, matriz_dir, str(hook_source),
+                                   cfg, progress_cb=progress_cb)
+    cfg["hook_linhas"] = hook_linhas
+    write_json(var_dir / "job.config.json", cfg)
+    return hook_linhas
