@@ -301,3 +301,34 @@ def test_paridade_captions_da_variacao_sao_as_da_matriz_deslocadas():
     # corpo vira caption própria nas duas recipes — comparável 1:1
     assert (r_var["captions"][-1]["fromFrame"] - r_matriz["captions"][0]["fromFrame"]
             == round(delta * fps))
+
+
+def test_paridade_estilo_e_cta_variacao_iguais_a_matriz(tmp_path, monkeypatch):
+    """Item 4 do spec: caption_* + brand kit e o x/y/fontSize do CTA são
+    idênticos entre matriz e variação. Golden que trava a herança contra
+    regressão (config copiado inteiro + deslocamento que só mexe no tempo)."""
+    from pipeline.variants import criar_variacao
+    jobs_root, m = _matriz_pronta(tmp_path)
+    # estilo de legenda + marca na matriz
+    cfg = load_json(m.dir / "job.config.json")
+    cfg.update({"caption_font_size": 52, "caption_bottom": 96, "caption_color": "#ff0000",
+                "caption_highlight": "#00ff00", "caption_font": "Inter", "brand_kit_slug": "aventos"})
+    write_json(m.dir / "job.config.json", cfg)
+    # CTA com geometria própria (x/y/fontSize) na matriz
+    write_json(m.dir / "overlays.json", [{"id": "cta", "type": "text", "text": "Assine",
+        "fromFrame": 45, "durationInFrames": 60, "x": 0.5, "y": 0.82, "fontSize": 40}])
+    _variacao_falsa(monkeypatch)
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+
+    mv, vv = load_json(m.dir / "job.config.json"), load_json(v / "job.config.json")
+    for campo in ("caption_font_size", "caption_bottom", "caption_color",
+                  "caption_highlight", "caption_font", "brand_kit_slug"):
+        assert vv[campo] == mv[campo], campo
+
+    cta_m = load_json(m.dir / "overlays.json")[0]
+    cta_v = load_json(v / "overlays.json")[0]
+    assert (cta_v["x"], cta_v["y"], cta_v["fontSize"]) == (cta_m["x"], cta_m["y"], cta_m["fontSize"])
+    assert cta_v["fromFrame"] == cta_m["fromFrame"] + round(3.2 * 30)  # só o tempo desloca
