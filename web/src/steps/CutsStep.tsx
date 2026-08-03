@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { streamSSE, mediaUrl, getCuts, getJob } from "../api";
+import { streamSSE, mediaUrl, getCuts, getJob, recutHook } from "../api";
 import { Slider } from "../components/Slider";
 import { ProgressBar } from "../components/ProgressBar";
 import { formatSeconds, percentage } from "../util";
@@ -94,6 +94,11 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // já foi cortado e montado na criação — então o aviso de !temSource precisa
   // explicar a origem em vez de falar em "liberar espaço", que nunca aconteceu.
   const [origemMatriz, setOrigemMatriz] = useState("");
+  // Variação com clipe bruto do hook guardado (hook_source.mp4): o passo Cortes
+  // deixa de ser só-leitura e oferece re-cortar o silêncio do hook. matriz-
+  // Disponivel diz se a matriz de origem ainda pode alimentar o re-corte.
+  const [hasHookSource, setHasHookSource] = useState(false);
+  const [matrizDisponivel, setMatrizDisponivel] = useState(false);
   // O que o refino vai apagar. stage_refine remove transcrição, textos,
   // sugestões e recipe de propósito — o vídeo encurta e as legendas sairiam de
   // sincronia. Não mudamos isso; só avisamos, e só quando há o que perder.
@@ -128,6 +133,8 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.config) setParams(j.config);
       setTemSource(j?.has_source !== false);
       setOrigemMatriz(j?.origem_matriz ?? "");
+      setHasHookSource(!!j?.has_hook_source);
+      setMatrizDisponivel(!!j?.matriz_disponivel);
       setPerdeTranscricao(!!j?.has_transcript);
       setAPerder(oQueSePerde(j ?? {}));
     }).catch(() => {
@@ -250,6 +257,29 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
     finally { setBusy(false); }
   };
 
+  const modoHook = hasHookSource;
+
+  const recut = async () => {
+    setConfirmandoCorte(false);
+    setBusy(true); setErr(null); setProg(null);
+    try {
+      await recutHook(slug, params, {
+        progress: (d) => { if (d.n != null && d.total != null) setProg({ n: d.n, total: d.total }); },
+        done: async (d) => {
+          // o re-corte reescreveu o trimmed e re-derivou os artefatos da base
+          const r = await getCuts(slug).catch(() => null);
+          if (r) { setResult(r); setTrimmedVersion(r.trimmed_mtime ?? 0); }
+          else if (d.trimmed_mtime != null) setTrimmedVersion(d.trimmed_mtime);
+          // recompor apagou os derivados (DERIVADOS_DO_TRIMMED); não avisar de novo
+          setAPerder([]); setPerdeTranscricao(false);
+          setRemoveList([]); setMarkStart(null);
+        },
+        error: (d) => setErr(d.detail ?? "erro ao re-cortar o hook"),
+      });
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
   const removed = result ? result.original_duration - result.trimmed_duration : 0;
 
   return (
@@ -268,28 +298,39 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
         hint="Só pausas mais longas que isto são cortadas: mais baixo acelera o ritmo (some tudo); mais alto preserva os respiros naturais."
         onChange={(n) => setParams({ ...params, min_silence: n })} />
       {/* refining na guarda: corte e refino reescrevem o mesmo trimmed.mp4 —
-          um de cada vez */}
-      <button onClick={pedirParaCortar} disabled={busy || !temSource || carregandoJob || refining}
-        className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
-        {busy ? "Cortando..." : "Detectar pausas"}
-      </button>
+          um de cada vez. Em modo hook sem matriz disponível o botão some por
+          completo (não só desabilita) — não há como re-cortar sem a matriz. */}
+      {(!modoHook || matrizDisponivel) && (
+        <button onClick={pedirParaCortar}
+          disabled={busy || carregandoJob || refining || (modoHook ? !matrizDisponivel : !temSource)}
+          className="px-4 py-2 bg-emerald-600 rounded font-medium disabled:opacity-40">
+          {busy ? "Cortando..." : modoHook ? "Detectar pausas (do hook)" : "Detectar pausas"}
+        </button>
+      )}
       {confirmandoCorte && (
         <ConfirmarDescarte
           ariaLabel="confirmar nova detecção de pausas"
-          acao="Detectar pausas refaz o corte a partir do vídeo original"
+          acao={modoHook
+            ? "Re-cortar o hook refaz o corte do hook e remonta a variação a partir da matriz"
+            : "Detectar pausas refaz o corte a partir do vídeo original"}
           aPerder={aPerder} perdeTranscricao={perdeTranscricao}
           busy={busy}
-          onConfirmar={onCut}
+          onConfirmar={modoHook ? recut : onCut}
           onDesistir={() => setConfirmandoCorte(false)}
         />
       )}
-      {!temSource && (
+      {modoHook && !matrizDisponivel && (
+        <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
+          A matriz <strong>{origemMatriz}</strong> foi excluída, então não dá para
+          re-cortar o hook desta variação. A variação continua renderizável, e os
+          cortes manuais sobre o vídeo montado continuam funcionando.
+        </p>
+      )}
+      {!modoHook && !temSource && (
         <p role="status" className="text-sm rounded border border-amber-700 bg-amber-950/40 p-3 text-amber-200">
           {origemMatriz ? (
-            // Variação de hook (spec 2026-08-01): nasce com trimmed.mp4 já
-            // composto (hook + corpo da matriz) e nunca teve source.mp4 — o
-            // aviso de "liberar espaço" seria falso, porque nada foi liberado
-            // aqui; a explicação certa é a origem.
+            // Variação antiga (criada antes da edição escopada): nasceu sem
+            // hook_source.mp4, então não dá para re-cortar o hook aqui.
             <>
               Esta variação já nasce cortada e montada a partir da matriz{" "}
               <strong>{origemMatriz}</strong> — não há vídeo original para
@@ -302,9 +343,6 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
               já cortado continuam funcionando.
             </>
           ) : (
-            // Sem source e sem corte salvo não há vídeo nenhum neste projeto —
-            // prometer "os cortes manuais continuam funcionando" seria mentira:
-            // não existe trimmed.mp4 para cortar manualmente.
             <>
               O vídeo original deste projeto foi apagado para <strong>liberar espaço</strong>,
               e este projeto não tem nenhum corte salvo — não dá para detectar pausas
