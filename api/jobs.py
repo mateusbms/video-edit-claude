@@ -441,6 +441,31 @@ def delete_source(slug: str, jobs_root: Path, input_root: Path) -> bool:
     return True
 
 
+def matriz_do_recut(job_dir: Path, jobs_root: Path) -> Path | None:
+    """Diretório da matriz apta a re-cortar o hook desta variação, ou None.
+
+    Apta = origem_matriz preenchido no config, a matriz existe e ainda tem
+    trimmed.mp4 + transcript.json (o corpo que o re-corte lê na hora). Fonte
+    única da checagem que get_state expõe ao front e que /recut-hook reusa para
+    o 409. Usa _job_dir_seguro: um origem_matriz de travessia vira None."""
+    cfg_path = job_dir / "job.config.json"
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg = load_json(cfg_path)
+    except Exception:
+        return None
+    origem = cfg.get("origem_matriz", "")
+    if not origem:
+        return None
+    matriz = _job_dir_seguro(origem, Path(jobs_root))
+    if matriz is None or not matriz.is_dir():
+        return None
+    if not (matriz / "trimmed.mp4").exists() or not (matriz / "transcript.json").exists():
+        return None
+    return matriz
+
+
 def get_state(slug: str, jobs_root: Path) -> JobState:
     """Estado de um projeto para as telas lerem.
 
@@ -492,6 +517,9 @@ def get_state(slug: str, jobs_root: Path) -> JobState:
         has_render_9x16=False,
         papel=job_config.papel,
         origem_matriz=job_config.origem_matriz,
+        has_hook_source=(job_dir / "hook_source.mp4").exists(),
+        hook_linhas=job_config.hook_linhas,
+        matriz_disponivel=matriz_do_recut(job_dir, Path(jobs_root)) is not None,
     )
     state.captionStyle = {
         "fontSize": job_config.caption_font_size,
