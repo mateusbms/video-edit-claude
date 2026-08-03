@@ -55,6 +55,32 @@ def compute_kept_segments(
     return [s for s in merged if s.duration >= min_segment]
 
 
+def fronteira_local(silences, center, w0, w1, default_raio: float = 0.15) -> dict:
+    """Fronteira de corte em torno de `center`, dado os silêncios (absolutos,
+    ordenados) detectados na janela [w0, w1].
+
+    Corta no MEIO da micro-pausa imediatamente à esquerda e imediatamente à
+    direita do instante apontado — o ponto mais silencioso de cada lado. Se o
+    clique cai dentro de uma pausa, os "à esquerda/à direita" já são as pausas
+    vizinhas (a que contém o clique não é totalmente de um lado só), então o
+    mesmo cálculo expande para elas. Sem pausa de um lado (fala contínua), a
+    borda vira `center ± default_raio` (clampada à janela) e `limpo_*` fica
+    False para o front oferecer o nudge frame-a-frame.
+    """
+    esquerda = [s for s in silences if s[1] < center]
+    direita = [s for s in silences if s[0] > center]
+    s_esq = esquerda[-1] if esquerda else None
+    s_dir = direita[0] if direita else None
+    start = (s_esq[0] + s_esq[1]) / 2 if s_esq else max(w0, center - default_raio)
+    end = (s_dir[0] + s_dir[1]) / 2 if s_dir else min(w1, center + default_raio)
+    return {
+        "start": round(start, 3),
+        "end": round(end, 3),
+        "limpo_inicio": s_esq is not None,
+        "limpo_fim": s_dir is not None,
+    }
+
+
 def invert_ranges(remove: list[Segment], duration: float) -> list[Segment]:
     """Trechos a MANTER = complemento de `remove` sobre [0, duration]."""
     clamped = [

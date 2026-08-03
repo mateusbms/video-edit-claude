@@ -189,3 +189,42 @@ def test_stage_cut_reports_progress(tmp_path):
     assert calls, "progress_cb não foi chamado"
     n, total = calls[-1]
     assert total > 0 and 0 <= n <= total
+
+
+from pipeline.silence import fronteira_local
+
+
+def test_fronteira_pega_o_meio_das_pausas_que_bracketam_o_clique():
+    # pausas (start,end) absolutas dentro da janela [21,23]; clique em 22 (no ruído)
+    silencios = [(21.1, 21.5), (22.4, 22.8)]
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0)
+    assert r["start"] == 21.3            # meio de (21.1,21.5)
+    assert r["end"] == 22.6              # meio de (22.4,22.8)
+    assert r["limpo_inicio"] is True and r["limpo_fim"] is True
+
+
+def test_fronteira_clique_dentro_de_pausa_expande_para_vizinhas():
+    # clique em 22.0 cai DENTRO de (21.8,22.2); expande para as pausas vizinhas
+    silencios = [(21.0, 21.2), (21.8, 22.2), (22.7, 22.9)]
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0)
+    assert r["start"] == 21.1            # meio da pausa à esquerda da que contém
+    assert r["end"] == 22.8             # meio da pausa à direita da que contém
+
+
+def test_fronteira_sem_pausa_de_um_lado_usa_default_e_marca_nao_limpo():
+    silencios = [(21.1, 21.5)]          # só à esquerda
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.3
+    assert r["end"] == 22.15            # center + default_raio
+    assert r["limpo_inicio"] is True and r["limpo_fim"] is False
+
+
+def test_fronteira_sem_pausa_nenhuma_cai_no_default_dos_dois_lados():
+    r = fronteira_local([], center=22.0, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.85 and r["end"] == 22.15
+    assert r["limpo_inicio"] is False and r["limpo_fim"] is False
+
+
+def test_fronteira_default_clampa_nas_bordas_da_janela():
+    r = fronteira_local([], center=21.05, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.0           # max(w0, center-default_raio)
