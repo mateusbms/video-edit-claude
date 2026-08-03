@@ -1,5 +1,5 @@
 import type {
-  Hook, JobState, CaptionLine, CutResult, SSEEvent, Overlay, JobSummary,
+  Hook, JobState, CaptionLine, CutResult, SSEEvent, Overlay, JobSummary, CutParams,
 } from "./types";
 import type { Suggestion, SuggestDefaults } from "./suggestions";
 
@@ -165,6 +165,18 @@ export function createVariant(
   fd.append("file", file);
   fd.append("novo_slug", novoSlug);
   return streamSSE(`${BASE}/jobs/${slug}/variants`, { method: "POST", body: fd }, handlers);
+}
+
+// Re-corta só o silêncio do hook de uma variação e recompõe (SSE). Reusa os
+// mesmos sliders do corte normal; o backend lê o corpo da matriz na hora.
+export function recutHook(
+  slug: string, params: CutParams,
+  handlers: { progress?: (d: any) => void; done?: (d: any) => void; error?: (d: any) => void },
+): Promise<void> {
+  return streamSSE(`${BASE}/jobs/${slug}/recut-hook`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  }, handlers);
 }
 
 // o formato vem da orientação do job, não da query — GET /still não aceita mais `format`

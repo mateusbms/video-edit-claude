@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   parseSSEChunk, getOverlays, putOverlays, generateSuggestions, streamSSE, uploadJob, createVariant,
 } from "../api";
+import { recutHook } from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -119,6 +120,29 @@ describe("createVariant", () => {
     expect(fd.get("file")).toBe(file);
     expect(fd.get("novo_slug")).toBe("corpo-v2");
   });
+});
+
+it("recutHook posta os sliders no endpoint /recut-hook", async () => {
+  const chamadas: any[] = [];
+  const fakeBody = new ReadableStream({
+    start(c) {
+      c.enqueue(new TextEncoder().encode('event: done\ndata: {"hook_linhas":2}\n\n'));
+      c.close();
+    },
+  });
+  vi.stubGlobal("fetch", (url: string, opts: any) => {
+    chamadas.push({ url, opts });
+    return Promise.resolve(new Response(fakeBody, { status: 200 }));
+  });
+
+  let done: any = null;
+  await recutHook("corpo-h1",
+    { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+    { done: (d) => { done = d; } });
+
+  expect(chamadas[0].url).toBe("/api/jobs/corpo-h1/recut-hook");
+  expect(JSON.parse(chamadas[0].opts.body)).toEqual({ silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 });
+  expect(done).toEqual({ hook_linhas: 2 });
 });
 
 describe("generateSuggestions", () => {
