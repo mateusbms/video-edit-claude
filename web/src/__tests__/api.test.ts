@@ -3,6 +3,7 @@ import {
   parseSSEChunk, getOverlays, putOverlays, generateSuggestions, streamSSE, uploadJob, createVariant,
 } from "../api";
 import { recutHook } from "../api";
+import { detectLocal } from "../api";
 
 describe("parseSSEChunk", () => {
   it("decodifica event+data", () => {
@@ -143,6 +144,21 @@ it("recutHook posta os sliders no endpoint /recut-hook", async () => {
   expect(chamadas[0].url).toBe("/api/jobs/corpo-h1/recut-hook");
   expect(JSON.parse(chamadas[0].opts.body)).toEqual({ silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 });
   expect(done).toEqual({ hook_linhas: 2 });
+});
+
+it("detectLocal posta o center e devolve a fronteira", async () => {
+  const chamadas: any[] = [];
+  vi.stubGlobal("fetch", (url: string, opts: any) => {
+    chamadas.push({ url, opts });
+    return Promise.resolve(new Response(
+      JSON.stringify({ start: 21.3, end: 22.6, limpo_inicio: true, limpo_fim: false }),
+      { status: 200, headers: { "Content-Type": "application/json" } }));
+  });
+
+  const r = await detectLocal("v1", 22.0);
+  expect(chamadas[0].url).toBe("/api/jobs/v1/detect-local");
+  expect(JSON.parse(chamadas[0].opts.body)).toEqual({ center: 22.0 });
+  expect(r).toEqual({ start: 21.3, end: 22.6, limpo_inicio: true, limpo_fim: false });
 });
 
 describe("generateSuggestions", () => {

@@ -53,6 +53,22 @@ export async function getCuts(slug: string): Promise<CutResult | null> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/cuts`));
 }
 
+export type Emenda = {
+  start: number;
+  end: number;
+  limpo_inicio: boolean;
+  limpo_fim: boolean;
+};
+
+// Analyze-only: manda o instante apontado e recebe a fronteira proposta do
+// corte por silêncio local. Não corta — a aplicação vai pelo /refine.
+export async function detectLocal(slug: string, center: number): Promise<Emenda> {
+  return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/detect-local`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ center }),
+  }));
+}
+
 export async function getTranscript(slug: string): Promise<CaptionLine[]> {
   return jsonOrThrow(await fetch(`${BASE}/jobs/${slug}/transcript`));
 }
