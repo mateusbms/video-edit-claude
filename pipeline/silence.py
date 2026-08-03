@@ -55,6 +55,32 @@ def compute_kept_segments(
     return [s for s in merged if s.duration >= min_segment]
 
 
+def fronteira_local(silences, center, w0, w1, default_raio: float = 0.15) -> dict:
+    """Fronteira de corte em torno de `center`, dado os silêncios (absolutos,
+    ordenados) detectados na janela [w0, w1].
+
+    Corta no MEIO da micro-pausa imediatamente à esquerda e imediatamente à
+    direita do instante apontado — o ponto mais silencioso de cada lado. Se o
+    clique cai dentro de uma pausa, os "à esquerda/à direita" já são as pausas
+    vizinhas (a que contém o clique não é totalmente de um lado só), então o
+    mesmo cálculo expande para elas. Sem pausa de um lado (fala contínua), a
+    borda vira `center ± default_raio` (clampada à janela) e `limpo_*` fica
+    False para o front oferecer o nudge frame-a-frame.
+    """
+    esquerda = [s for s in silences if s[1] < center]
+    direita = [s for s in silences if s[0] > center]
+    s_esq = esquerda[-1] if esquerda else None
+    s_dir = direita[0] if direita else None
+    start = (s_esq[0] + s_esq[1]) / 2 if s_esq else max(w0, center - default_raio)
+    end = (s_dir[0] + s_dir[1]) / 2 if s_dir else min(w1, center + default_raio)
+    return {
+        "start": round(start, 3),
+        "end": round(end, 3),
+        "limpo_inicio": s_esq is not None,
+        "limpo_fim": s_dir is not None,
+    }
+
+
 def invert_ranges(remove: list[Segment], duration: float) -> list[Segment]:
     """Trechos a MANTER = complemento de `remove` sobre [0, duration]."""
     clamped = [
@@ -102,6 +128,25 @@ def detect_silences(path: str, noise_db: float = -30.0, min_silence: float = 0.5
     )
     # silencedetect escreve no stderr
     return parse_silences(result.stderr)
+
+
+def detect_silences_janela(path: str, center: float, raio: float = 1.0,
+                           noise_db: float = -30.0, min_silence: float = 0.08):
+    """silencedetect só na janela [center-raio, center+raio] de `path`.
+
+    Usa -ss/-t ANTES de -i: o ffmpeg reseta o PTS da fatia, então os
+    silence_start/end vêm relativos ao início da janela — somamos `inicio` para
+    voltar ao tempo absoluto do trimmed. min_silence pequeno de propósito: pega
+    micro-pausas que o corte global (min_silence dos sliders) ignora."""
+    inicio = max(0.0, center - raio)
+    dur = 2 * raio
+    result = subprocess.run(
+        ["ffmpeg", "-ss", f"{inicio:.3f}", "-t", f"{dur:.3f}", "-i", path,
+         "-vn", "-af", f"silencedetect=noise={noise_db}dB:d={min_silence}",
+         "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    return [(s + inicio, e + inicio) for s, e in parse_silences(result.stderr)]
 
 
 def parse_ffmpeg_progress(line: str) -> float | None:

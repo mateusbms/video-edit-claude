@@ -24,6 +24,7 @@ from api.jobs import (
 from api.suggest_prompt import build_prompt
 from api.models import (
     CaptionStyleParams, CutParams, CutResult,
+    DetectLocalParams, DetectLocalResult,
     Hook, JobSummary, OrientationParams, OverlayParams, RefineParams,
     SuggestDefaults, Suggestion, TitleParams, TranscribeParams,
 )
@@ -31,7 +32,7 @@ from api.progress import run_with_progress
 from api.sse import sse_event
 from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FORMAT_KEYS
-from pipeline.silence import Segment
+from pipeline.silence import Segment, detect_silences_janela, fronteira_local
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_refine, stage_transcribe
 from pipeline.variants import criar_variacao, recompor_hook
 
@@ -350,6 +351,32 @@ def run_refine(slug: str, params: RefineParams):
         }
 
     return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
+
+
+@router.post("/jobs/{slug}/detect-local")
+def run_detect_local(slug: str, params: DetectLocalParams) -> DetectLocalResult:
+    """Analyze-only: re-detecta silêncios numa janela de ±1s em torno do ponto
+    apontado e propõe a fronteira de corte, SEM cortar. O front pré-visualiza e
+    aplica pelo /refine. Síncrono — 2s de áudio é sub-segundo."""
+    jobs_root, *_ = _roots()
+    job_dir = _dir_do_job(slug, jobs_root)
+    # _dir_do_job não checa existência (só travessia) — um slug que nunca
+    # existiu vira 404 aqui, antes do 409 confiante de "sem vídeo cortado".
+    if not job_dir.is_dir():
+        raise HTTPException(status_code=404, detail="projeto não encontrado")
+    trimmed = job_dir / "trimmed.mp4"
+    tp = job_dir / "trimmed.probe.json"
+    if not trimmed.exists() or not tp.exists():
+        raise HTTPException(status_code=409, detail="sem vídeo cortado para analisar")
+    dur = load_json(tp)["duration"]
+    cfg_path = job_dir / "job.config.json"
+    cfg = load_json(cfg_path) if cfg_path.exists() else {}
+    noise = cfg.get("silence_threshold_db", -30.0)
+    center = max(0.0, min(params.center, dur))
+    silencios = detect_silences_janela(str(trimmed), center, raio=1.0,
+                                       noise_db=noise, min_silence=0.08)
+    w0, w1 = max(0.0, center - 1.0), min(dur, center + 1.0)
+    return DetectLocalResult(**fronteira_local(silencios, center, w0, w1))
 
 
 @router.get("/jobs/{slug}/transcript")

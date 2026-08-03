@@ -189,3 +189,77 @@ def test_stage_cut_reports_progress(tmp_path):
     assert calls, "progress_cb não foi chamado"
     n, total = calls[-1]
     assert total > 0 and 0 <= n <= total
+
+
+from pipeline.silence import fronteira_local
+
+
+def test_fronteira_pega_o_meio_das_pausas_que_bracketam_o_clique():
+    # pausas (start,end) absolutas dentro da janela [21,23]; clique em 22 (no ruído)
+    silencios = [(21.1, 21.5), (22.4, 22.8)]
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0)
+    assert r["start"] == 21.3            # meio de (21.1,21.5)
+    assert r["end"] == 22.6              # meio de (22.4,22.8)
+    assert r["limpo_inicio"] is True and r["limpo_fim"] is True
+
+
+def test_fronteira_clique_dentro_de_pausa_expande_para_vizinhas():
+    # clique em 22.0 cai DENTRO de (21.8,22.2); expande para as pausas vizinhas
+    silencios = [(21.0, 21.2), (21.8, 22.2), (22.7, 22.9)]
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0)
+    assert r["start"] == 21.1            # meio da pausa à esquerda da que contém
+    assert r["end"] == 22.8             # meio da pausa à direita da que contém
+
+
+def test_fronteira_sem_pausa_de_um_lado_usa_default_e_marca_nao_limpo():
+    silencios = [(21.1, 21.5)]          # só à esquerda
+    r = fronteira_local(silencios, center=22.0, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.3
+    assert r["end"] == 22.15            # center + default_raio
+    assert r["limpo_inicio"] is True and r["limpo_fim"] is False
+
+
+def test_fronteira_sem_pausa_nenhuma_cai_no_default_dos_dois_lados():
+    r = fronteira_local([], center=22.0, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.85 and r["end"] == 22.15
+    assert r["limpo_inicio"] is False and r["limpo_fim"] is False
+
+
+def test_fronteira_default_clampa_nas_bordas_da_janela():
+    r = fronteira_local([], center=21.05, w0=21.0, w1=23.0, default_raio=0.15)
+    assert r["start"] == 21.0           # max(w0, center-default_raio)
+
+
+def test_detect_janela_desloca_timestamps_para_o_absoluto(monkeypatch):
+    from pipeline import silence
+
+    class _R:
+        # silencedetect reporta relativo ao slice (-ss antes de -i zera o PTS)
+        stderr = ("[silencedetect] silence_start: 0.100\n"
+                  "[silencedetect] silence_end: 0.500 | silence_duration: 0.4\n")
+
+    capturado = {}
+    def fake_run(cmd, capture_output, text):
+        capturado["cmd"] = cmd
+        return _R()
+    monkeypatch.setattr(silence.subprocess, "run", fake_run)
+
+    out = silence.detect_silences_janela("trimmed.mp4", center=22.0, raio=1.0,
+                                         noise_db=-30.0, min_silence=0.08)
+    # janela começa em 21.0 → 0.1/0.5 viram 21.1/21.5
+    assert out == [(21.1, 21.5)]
+    # a fatia foi pedida com -ss/-t e o filtro certo
+    cmd = capturado["cmd"]
+    assert "-ss" in cmd and "21.000" in cmd
+    assert "-t" in cmd and "2.000" in cmd
+    assert any("silencedetect=noise=-30.0dB:d=0.08" in a for a in cmd)
+
+
+def test_detect_janela_clampa_o_inicio_em_zero(monkeypatch):
+    from pipeline import silence
+    class _R: stderr = ""
+    cap = {}
+    monkeypatch.setattr(silence.subprocess, "run",
+                        lambda cmd, capture_output, text: (cap.setdefault("cmd", cmd), _R())[1])
+    silence.detect_silences_janela("t.mp4", center=0.3, raio=1.0)
+    assert "0.000" in cap["cmd"]        # -ss não fica negativo

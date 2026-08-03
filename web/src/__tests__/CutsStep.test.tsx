@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, waitFor } from "@testing-library/react";
 
-const { streamSSE, getCuts, getJob, recutHook } = vi.hoisted(() => ({
+const { streamSSE, getCuts, getJob, recutHook, detectLocal } = vi.hoisted(() => ({
   streamSSE: vi.fn(async (url: string, _opts: any, on: any) => {
     if (url.includes("/refine")) {
       on.progress?.({ n: 1, total: 4 });
@@ -19,10 +19,11 @@ const { streamSSE, getCuts, getJob, recutHook } = vi.hoisted(() => ({
   getCuts: vi.fn(async () => null),
   getJob: vi.fn(async () => ({ config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 } })),
   recutHook: vi.fn(async () => undefined),
+  detectLocal: vi.fn(async () => ({ start: 21.9, end: 22.1, limpo_inicio: true, limpo_fim: true })),
 }));
 vi.mock("../api", () => ({
   mediaUrl: (slug: string, name: string) => `/api/jobs/${slug}/files/${name}`,
-  streamSSE, getCuts, getJob, recutHook,
+  streamSSE, getCuts, getJob, recutHook, detectLocal,
 }));
 
 import { CutsStep } from "../steps/CutsStep";
@@ -655,5 +656,32 @@ describe("CutsStep — modo hook (re-corte da variação a partir da matriz)", (
     render(<CutsStep {...props} slug="corpo-h1" />);
     expect(await screen.findByText(/foi excluída/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Detectar pausas \(do hook\)/ })).toBeNull();
+  });
+});
+
+describe("CutsStep — corte por silêncio local ('Remover trecho aqui')", () => {
+  it("'Remover trecho aqui' propõe a emenda e ao aplicar entra na lista de remoção", async () => {
+    getCuts.mockResolvedValue({
+      original_duration: 40, trimmed_duration: 40,
+      segments: [{ start: 0, end: 40 }], trimmed_mtime: 5,
+    } as any);
+    getJob.mockResolvedValue({
+      config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: true, has_transcript: true, probe: { fps: 30, duration: 40 },
+    } as any);
+    render(<CutsStep {...props} />);
+
+    const btn = await screen.findByRole("button", { name: /Remover trecho aqui/ });
+    // o player está em currentTime 0 no jsdom; detectLocal é chamado com esse center
+    fireEvent.click(btn);
+    await waitFor(() => expect(detectLocal).toHaveBeenCalledWith("v1", expect.any(Number)));
+
+    // preview aparece; aplicar adiciona {21.9,22.1} à lista de remoção
+    fireEvent.click(await screen.findByRole("button", { name: /aplicar corte/i }));
+    // a lista de cortes manuais formata em mm:ss (formatSeconds), como o
+    // resto do painel — 21.9s/22.1s viram 00:21/00:22
+    expect(await screen.findByText(/00:21\s*[–-]\s*00:22/)).toBeInTheDocument();
+    // o botão de aplicar os cortes manuais agora conta 1
+    expect(screen.getByRole("button", { name: /Aplicar cortes \(1\)/ })).toBeInTheDocument();
   });
 });

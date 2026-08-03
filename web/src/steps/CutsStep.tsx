@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { streamSSE, mediaUrl, getCuts, getJob, recutHook } from "../api";
+import { streamSSE, mediaUrl, getCuts, getJob, recutHook, detectLocal } from "../api";
+import type { Emenda } from "../api";
 import { Slider } from "../components/Slider";
 import { ProgressBar } from "../components/ProgressBar";
+import { EmendaPreview } from "../components/EmendaPreview";
 import { formatSeconds, percentage } from "../util";
 import type { CutResult, CutParams } from "../types";
 import type { StepProps } from "../App";
@@ -83,6 +85,10 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // refino reescrevem o arquivo no mesmo caminho, então sem isso o navegador
   // pode servir pedaços do vídeo anterior — player parado em 0:00, sem duração.
   const [trimmedVersion, setTrimmedVersion] = useState(0);
+  const [fps, setFps] = useState(30);
+  // emenda proposta pela detecção local, em pré-visualização; null = sem proposta
+  const [emenda, setEmenda] = useState<Emenda | null>(null);
+  const [detectando, setDetectando] = useState(false);
   const [refining, setRefining] = useState(false);
   const [refineProg, setRefineProg] = useState<{ n: number; total: number } | null>(null);
   // Sem o source, o "Detectar pausas" não pode acontecer — o stage_cut é o
@@ -137,6 +143,7 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
       setMatrizDisponivel(!!j?.matriz_disponivel);
       setPerdeTranscricao(!!j?.has_transcript);
       setAPerder(oQueSePerde(j ?? {}));
+      if (j?.probe?.fps) setFps(j.probe.fps);
     }).catch(() => {
       // getJob falhou: aPerder fica null (não sabemos o que este projeto tem)
       // e não vai mudar sozinho — travar o botão esperando por uma resposta
@@ -177,6 +184,23 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
     }
   };
   const removeRange = (i: number) => setRemoveList((l) => l.filter((_, k) => k !== i));
+
+  const detectarLocal = async () => {
+    setErr(null); setDetectando(true);
+    try {
+      setEmenda(await detectLocal(slug, curTime()));
+    } catch (e: any) { setErr(e.message); }
+    finally { setDetectando(false); }
+  };
+
+  const aplicarEmenda = () => {
+    if (!emenda) return;
+    const { start, end } = emenda;
+    if (end > start) {
+      setRemoveList((l) => [...l, { start, end }].sort((a, b) => a.start - b.start));
+    }
+    setEmenda(null);
+  };
 
   const pedirParaCortar = () => {
     // mesmo portão do pedirParaAplicar: confirmar quando há o que perder — ou
@@ -392,6 +416,25 @@ export const CutsStep: React.FC<StepProps> = ({ slug, next, back }) => {
           <div className="border-t border-zinc-800 pt-3 mt-3 space-y-2">
             <p className="font-medium">Cortes manuais (opcional)</p>
             <p className="text-zinc-400 text-xs">Dê play no vídeo, marque o início e o fim dos trechos a remover.</p>
+            <div className="flex gap-2 items-center flex-wrap">
+              <button onClick={detectarLocal} disabled={detectando || refining || busy}
+                className="px-3 py-1 bg-sky-700 rounded disabled:opacity-40">
+                {detectando ? "Analisando..." : "Remover trecho aqui"}
+              </button>
+              <span className="text-xs text-zinc-500">
+                Pause perto do trecho ruim e clique — acho as bordas exatas em volta.
+              </span>
+            </div>
+            {emenda && (
+              <EmendaPreview
+                slug={slug} version={trimmedVersion} fps={fps}
+                start={emenda.start} end={emenda.end}
+                limpoInicio={emenda.limpo_inicio} limpoFim={emenda.limpo_fim}
+                onChange={(start, end) => setEmenda((e) => (e ? { ...e, start, end } : e))}
+                onAplicar={aplicarEmenda}
+                onCancelar={() => setEmenda(null)}
+              />
+            )}
             <div className="flex gap-2 items-center flex-wrap">
               <button onClick={onMarkStart} className="px-3 py-1 bg-zinc-800 rounded">Marcar início</button>
               <button onClick={onMarkEnd} disabled={markStart == null} className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-40">Marcar fim</button>
