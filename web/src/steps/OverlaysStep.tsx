@@ -50,6 +50,10 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back, nextLabel 
   const [playing, setPlaying] = useState(false);
   const [durationSec, setDurationSec] = useState(0);
   const [orientation, setOrientation] = useState<Orientation>("16x9");
+  // Numa matriz não há hook falado ainda; buscar GET /hook cairia no auto-
+  // sugerido a partir da transcrição e desenharia um "hook fantasma" no preview
+  // (só visual, mas confuso). papel vem do getJob.
+  const [papel, setPapel] = useState<"normal" | "matriz">("normal");
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -66,13 +70,15 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back, nextLabel 
   useEffect(() => {
     getOverlays(slug).then(setOverlays).catch(() => {});
     getTranscript(slug).then(setLines).catch(() => {});
-    getHook(slug).then(setHook).catch(() => {});
     getJob(slug).then((j: any) => {
       if (j?.probe?.fps) setFps(j.probe.fps);
       if (j?.probe?.duration) setDurationSec(j.probe.duration);
       // resolvido = com o brand kit aplicado, igual ao que o render vai usar
       if (j?.captionStyle) setCapStyle(effectiveCaptionStyle(j.captionStyle, j.captionStyleResolved));
       if (j?.orientation) setOrientation(j.orientation);
+      const papelJob = j?.papel ?? "normal";
+      setPapel(papelJob);
+      if (papelJob !== "matriz") getHook(slug).then(setHook).catch(() => {});
     }).catch(() => {});
     getSuggestions(slug).then(setSuggestions).catch(() => {});
     getSuggestDefaults(slug).then(setDefs).catch(() => {});
@@ -181,11 +187,11 @@ export const OverlaysStep: React.FC<StepProps> = ({ slug, next, back, nextLabel 
     patch(selected.id, applyEndSec(selected.fromFrame, s, fps));
 
   const zone = captionZone(capStyle, frameSize(orientation).height);
-  const hookOverlays = hook ? hookToOverlays(hook) : [];
+  const hookOverlays = papel !== "matriz" && hook ? hookToOverlays(hook) : [];
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-semibold">5. Textos</h2>
+      <h2 className="text-xl font-semibold">{papel === "matriz" ? 4 : 5}. Textos</h2>
       <p className="text-sm text-zinc-400">
         Adicione blocos de texto sobre o vídeo. Recortar o vídeo depois (passo Cortes) remove os textos manuais.
         Arraste para mover; use Largura para a quebra de linha.

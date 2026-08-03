@@ -167,6 +167,12 @@ class JobState(BaseModel):
     orientation: str = "16x9"  # efetiva (já resolvida); nunca vazia
     papel: str = "normal"
     origem_matriz: str = ""
+    # edição escopada da variação (spec 2026-08-01): hook_source.mp4 presente
+    # (dá para re-cortar o hook), fronteira do hook na transcrição, e se a
+    # matriz de origem ainda está apta a alimentar o re-corte.
+    has_hook_source: bool = False
+    hook_linhas: int = 0
+    matriz_disponivel: bool = False
 
 
 class JobSummary(BaseModel):

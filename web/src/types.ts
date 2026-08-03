@@ -79,6 +79,10 @@ export type JobState = {
   brandKitSlug?: string;
   papel: "normal" | "matriz";
   origem_matriz: string;
+  // edição escopada da variação (spec 2026-08-01)
+  has_hook_source?: boolean;
+  hook_linhas?: number;
+  matriz_disponivel?: boolean;
 };
 
 // Espelho de api/models.py::JobSummary.

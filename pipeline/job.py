@@ -27,6 +27,10 @@ class JobConfig:
     # a variação é autossuficiente e sobrevive à exclusão da matriz).
     papel: str = "normal"  # "normal" | "matriz"
     origem_matriz: str = ""
+    # nº de linhas iniciais de transcript.json que são do hook (fronteira do
+    # delta), para o passo Transcrição da variação editar só o hook. 0 = projeto
+    # normal/matriz (transcrição inteira).
+    hook_linhas: int = 0
 
 
 @dataclass

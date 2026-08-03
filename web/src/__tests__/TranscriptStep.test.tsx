@@ -140,4 +140,32 @@ describe("TranscriptStep progress", () => {
       spy.mockRestore();
     }
   });
+
+  it("variação exibe só as linhas do hook e o save preserva o corpo", async () => {
+    const api = await import("../api");
+    const linhas = [
+      { text: "oi", start: 0, end: 0.8, words: [{ word: "oi", start: 0, end: 0.8 }] },
+      { text: "corpo", start: 4.2, end: 5.2, words: [{ word: "corpo", start: 4.2, end: 5.2 }] },
+    ];
+    (api.getTranscript as any).mockResolvedValueOnce(linhas);
+    (api.getJob as any).mockResolvedValueOnce({ hook_linhas: 1, orientation: "16x9" });
+    (api.putTranscript as any).mockResolvedValueOnce(undefined);
+
+    render(<TranscriptStep slug="corpo-h1" setSlug={() => {}} next={() => {}} back={() => {}} />);
+    // só a palavra do hook fica editável
+    const inputs = await screen.findAllByDisplayValue(/oi|corpo/);
+    const editaveis = inputs.filter((i) => (i as HTMLInputElement).value === "oi");
+    expect(editaveis).toHaveLength(1);
+    expect(screen.queryByDisplayValue("corpo")).toBeNull();
+    // editar o hook e sair do campo salva a transcrição COMPLETA (hook + corpo)
+    fireEvent.change(editaveis[0], { target: { value: "olá" } });
+    fireEvent.blur(editaveis[0]);
+    await waitFor(() => expect(api.putTranscript).toHaveBeenCalled());
+    const enviado = (api.putTranscript as any).mock.calls[0][1] as any[];
+    expect(enviado).toHaveLength(2);                 // corpo preservado
+    expect(enviado[0].words[0].word).toBe("olá");
+    expect(enviado[1].text).toBe("corpo");
+    // aviso explicando o escopo
+    expect(screen.getByText(/só o hook/i)).toBeInTheDocument();
+  });
 });

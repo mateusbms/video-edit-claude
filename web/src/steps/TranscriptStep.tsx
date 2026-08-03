@@ -28,6 +28,10 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   const [brandSlug, setBrandSlug] = useState("");
   const [previewScale, setPreviewScale] = useState(1);
   const [orientation, setOrientation] = useState<Orientation>("16x9");
+  // Variação (spec 2026-08-01): transcript.json é hook ++ corpo. Só as
+  // hook_linhas primeiras linhas são do hook; o corpo já foi transcrito na
+  // matriz e não deve ser exibido nem tocado aqui. 0 = projeto normal (tudo).
+  const [hookLinhas, setHookLinhas] = useState(0);
 
   useEffect(() => {
     getTranscript(slug).then(setLines).catch(() => {});
@@ -36,6 +40,7 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
       if (j?.captionStyleResolved) setCapResolved(j.captionStyleResolved);
       if (j?.brandKitSlug) setBrandSlug(j.brandKitSlug);
       if (j?.orientation) setOrientation(j.orientation);
+      setHookLinhas(j?.hook_linhas ?? 0);
     }).catch(() => {});
   }, [slug]);
 
@@ -60,6 +65,11 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
   // maior come esse teto, então o `bottom` é reduzido junto quando ela cresce —
   // senão o controle mostraria uma posição diferente da que vai renderizar.
   const maxBottom = maxCaptionBottom(capStyle.fontSize, frameSize(orientation).height);
+
+  // No editor da variação, só o hook é editável; o corpo fica preservado em
+  // `lines` e volta inteiro no save. O editor não adiciona/remove linhas, então
+  // hook_linhas segue válido durante a edição normal.
+  const linhasVisiveis = hookLinhas > 0 && lines ? lines.slice(0, hookLinhas) : lines;
 
   const transcribe = async () => {
     setBusy(true); setErr(null); setStage("solicitado"); setProg(null);
@@ -185,9 +195,14 @@ export const TranscriptStep: React.FC<StepProps> = ({ slug, next, back }) => {
           />
         </div>
       )}
+      {lines && hookLinhas > 0 && (
+        <p className="text-sm rounded border border-sky-800 bg-sky-950/40 p-3 text-sky-200">
+          O corpo já está transcrito na matriz — aqui você revisa <strong>só o hook</strong>.
+        </p>
+      )}
       {lines && (
         <div className="max-h-[65vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded p-4 text-base leading-relaxed space-y-1">
-          {lines.map((l, li) => (
+          {linhasVisiveis!.map((l, li) => (
             <div key={li} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-2 py-2 rounded hover:bg-zinc-800/50">
               <span className="text-xs text-zinc-500 font-mono w-12 shrink-0">{l.start.toFixed(1)}s</span>
               {l.words.map((w, wi) => (

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, waitFor } from "@testing-library/react";
 
-const { streamSSE, getCuts, getJob } = vi.hoisted(() => ({
+const { streamSSE, getCuts, getJob, recutHook } = vi.hoisted(() => ({
   streamSSE: vi.fn(async (url: string, _opts: any, on: any) => {
     if (url.includes("/refine")) {
       on.progress?.({ n: 1, total: 4 });
@@ -18,10 +18,11 @@ const { streamSSE, getCuts, getJob } = vi.hoisted(() => ({
   // sem corte anterior por padrão; cada teste de remontagem sobrescreve
   getCuts: vi.fn(async () => null),
   getJob: vi.fn(async () => ({ config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 } })),
+  recutHook: vi.fn(async () => undefined),
 }));
 vi.mock("../api", () => ({
   mediaUrl: (slug: string, name: string) => `/api/jobs/${slug}/files/${name}`,
-  streamSSE, getCuts, getJob,
+  streamSSE, getCuts, getJob, recutHook,
 }));
 
 import { CutsStep } from "../steps/CutsStep";
@@ -622,5 +623,37 @@ describe("CutsStep — um corte por vez", () => {
 
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: /aplicar cortes/i })).not.toBeInTheDocument());
+  });
+});
+
+describe("CutsStep — modo hook (re-corte da variação a partir da matriz)", () => {
+  it("variação apta oferece 'Detectar pausas (do hook)' e re-corta após confirmar", async () => {
+    getJob.mockResolvedValueOnce({
+      slug: "corpo-h1", config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false, origem_matriz: "corpo", has_hook_source: true,
+      matriz_disponivel: true, has_transcript: true,
+    } as any);
+    getCuts.mockResolvedValueOnce({
+      original_duration: 11.2, trimmed_duration: 11.2, segments: [{ start: 0, end: 11.2 }], trimmed_mtime: 1,
+    } as any);
+    recutHook.mockResolvedValueOnce(undefined);
+
+    render(<CutsStep {...props} slug="corpo-h1" />);
+    const btn = await screen.findByRole("button", { name: /Detectar pausas \(do hook\)/ });
+    fireEvent.click(btn);
+    // portão de confirmação (há transcrição a perder)
+    fireEvent.click(await screen.findByRole("button", { name: /Descartar e cortar/ }));
+    await waitFor(() => expect(recutHook).toHaveBeenCalledWith("corpo-h1", expect.any(Object), expect.any(Object)));
+  });
+
+  it("variação com matriz excluída avisa e não oferece o re-corte", async () => {
+    getJob.mockResolvedValueOnce({
+      slug: "corpo-h1", config: { silence_threshold_db: -30, padding: 0.1, min_silence: 0.5 },
+      has_source: false, origem_matriz: "corpo", has_hook_source: true, matriz_disponivel: false,
+    } as any);
+    getCuts.mockResolvedValueOnce(null);
+    render(<CutsStep {...props} slug="corpo-h1" />);
+    expect(await screen.findByText(/foi excluída/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Detectar pausas \(do hook\)/ })).toBeNull();
   });
 });

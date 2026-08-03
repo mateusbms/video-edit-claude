@@ -98,8 +98,10 @@ def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
     v = jobs_root / "corpo-h1"
     assert (v / "trimmed.mp4").read_bytes() == b"composto"
     assert not (v / "source.mp4").exists()                       # sem source, de propósito
+    assert (v / "hook_source.mp4").read_bytes() == b"hook bruto"  # clipe bruto preservado
     probe = load_json(v / "trimmed.probe.json")
     assert probe["duration"] == 11.2
+    assert load_json(v / "probe.json")["duration"] == 11.2        # probe.json = composto
     assert load_json(v / "cuts.json") == [{"start": 0, "end": 11.2}]
 
     t = load_json(v / "transcript.json")
@@ -115,8 +117,72 @@ def test_criar_variacao_monta_o_projeto_completo(tmp_path, monkeypatch):
     assert cfg["origem_matriz"] == "corpo"
     assert cfg["silence_threshold_db"] == -35.0                  # sliders herdados
     assert cfg["title"] == "Meu corpo h1"                        # título + sufixo do slug
-    # temporários limpos
-    assert not any(p.name.startswith("hook") for p in v.iterdir())
+    assert cfg["hook_linhas"] == 1                               # 1 linha de hook (fake transcribe)
+    # temporário do corte de hook limpo; hook_source.mp4 permanece
+    assert not (v / "hook_trimmed.tmp.mp4").exists()
+
+
+def _variacao_falsa_deltas(monkeypatch, deltas, dur_composto=11.2):
+    """Como _variacao_falsa, mas o hook cortado tem duração de `deltas` em
+    sequência (um valor consumido por chamada de probe do hook cortado)."""
+    from pipeline import variants
+
+    class _Meta:
+        width, height, fps = 1080, 1920, 30.0
+        def __init__(self, duration): self.duration = duration; self.nb_frames = int(duration * 30)
+
+    fila = list(deltas)
+    def fake_probe(p):
+        nome = Path(p).name
+        if nome == "hook_trimmed.tmp.mp4":
+            return _Meta(fila.pop(0))       # delta do corte corrente
+        if "hook" in nome:                  # hook_source.mp4 (bruto)
+            return _Meta(9.9)
+        return _Meta(dur_composto)          # composto
+
+    monkeypatch.setattr(variants, "detect_silences", lambda *a, **k: [])
+    monkeypatch.setattr(variants, "cut_segments",
+                        lambda src, seg, dest, **k: Path(dest).write_bytes(b"hook cortado"))
+    monkeypatch.setattr(variants, "probe_video", fake_probe)
+    monkeypatch.setattr(variants, "_concat_hook_e_corpo",
+                        lambda hook, corpo, dest: Path(dest).write_bytes(b"composto"))
+    monkeypatch.setattr(variants, "transcribe_audio",
+                        lambda *a, **k: [_linha("oi", 0.0, 0.8)])
+
+
+def test_recompor_hook_desloca_da_base_sem_drift(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao, recompor_hook
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa_deltas(monkeypatch, deltas=[3.2, 5.0])
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+    assert load_json(v / "transcript.json")[1]["start"] == 1.0 + 3.2
+
+    # segundo corte com delta diferente: o corpo desloca da BASE (1.0), não do
+    # já deslocado — 1.0 + 5.0, nunca 1.0 + 3.2 + 5.0
+    hook_linhas = recompor_hook(v, m.dir)
+    assert hook_linhas == 1
+    assert load_json(v / "transcript.json")[1]["start"] == 1.0 + 5.0
+    assert load_json(v / "overlays.json")[0]["fromFrame"] == 30 + round(5.0 * 30)
+    assert load_json(v / "job.config.json")["hook_linhas"] == 1
+
+
+def test_recompor_hook_invalida_edit_recipe_e_preserva_hook_json(tmp_path, monkeypatch):
+    from pipeline.variants import criar_variacao, recompor_hook
+    jobs_root, m = _matriz_pronta(tmp_path)
+    _variacao_falsa_deltas(monkeypatch, deltas=[3.2, 3.2])
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+    write_json(v / "edit-recipe.json", {"stale": True})   # derivado do trimmed
+    write_json(v / "hook.json", {"title": "meu hook"})     # texto do usuário
+
+    recompor_hook(v, m.dir)
+
+    assert not (v / "edit-recipe.json").exists()           # invalidado
+    assert load_json(v / "hook.json") == {"title": "meu hook"}  # sobrevive
 
 
 def test_criar_variacao_falha_no_meio_faz_rollback(tmp_path, monkeypatch):
@@ -235,3 +301,34 @@ def test_paridade_captions_da_variacao_sao_as_da_matriz_deslocadas():
     # corpo vira caption própria nas duas recipes — comparável 1:1
     assert (r_var["captions"][-1]["fromFrame"] - r_matriz["captions"][0]["fromFrame"]
             == round(delta * fps))
+
+
+def test_paridade_estilo_e_cta_variacao_iguais_a_matriz(tmp_path, monkeypatch):
+    """Item 4 do spec: caption_* + brand kit e o x/y/fontSize do CTA são
+    idênticos entre matriz e variação. Golden que trava a herança contra
+    regressão (config copiado inteiro + deslocamento que só mexe no tempo)."""
+    from pipeline.variants import criar_variacao
+    jobs_root, m = _matriz_pronta(tmp_path)
+    # estilo de legenda + marca na matriz
+    cfg = load_json(m.dir / "job.config.json")
+    cfg.update({"caption_font_size": 52, "caption_bottom": 96, "caption_color": "#ff0000",
+                "caption_highlight": "#00ff00", "caption_font": "Inter", "brand_kit_slug": "aventos"})
+    write_json(m.dir / "job.config.json", cfg)
+    # CTA com geometria própria (x/y/fontSize) na matriz
+    write_json(m.dir / "overlays.json", [{"id": "cta", "type": "text", "text": "Assine",
+        "fromFrame": 45, "durationInFrames": 60, "x": 0.5, "y": 0.82, "fontSize": 40}])
+    _variacao_falsa(monkeypatch)
+    (tmp_path / "hook.mov").write_bytes(b"hook bruto")
+
+    criar_variacao(m.dir, jobs_root, "corpo-h1", str(tmp_path / "hook.mov"))
+    v = jobs_root / "corpo-h1"
+
+    mv, vv = load_json(m.dir / "job.config.json"), load_json(v / "job.config.json")
+    for campo in ("caption_font_size", "caption_bottom", "caption_color",
+                  "caption_highlight", "caption_font", "brand_kit_slug"):
+        assert vv[campo] == mv[campo], campo
+
+    cta_m = load_json(m.dir / "overlays.json")[0]
+    cta_v = load_json(v / "overlays.json")[0]
+    assert (cta_v["x"], cta_v["y"], cta_v["fontSize"]) == (cta_m["x"], cta_m["y"], cta_m["fontSize"])
+    assert cta_v["fromFrame"] == cta_m["fromFrame"] + round(3.2 * 30)  # só o tempo desloca

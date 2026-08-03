@@ -16,7 +16,7 @@ from api.claude_cli import (
 from api.jobs import (
     allowed_file_path, ArquivoEmUsoError, cut_result, delete_job,
     delete_source, get_state, _job_dir_seguro, job_summary, job_summary_minimo,
-    list_jobs, ProjetoNaoEncontradoError, suggest_hook, tem_trabalho,
+    list_jobs, matriz_do_recut, ProjetoNaoEncontradoError, suggest_hook, tem_trabalho,
     update_brand_kit, update_caption_style, update_config,
     update_hook_card_frames, update_orientation, update_title,
     update_whisper_model,
@@ -33,7 +33,7 @@ from pipeline.job import init_job, load_json, write_json
 from pipeline.orientation import FORMAT_KEYS
 from pipeline.silence import Segment
 from pipeline.stages import stage_cut, stage_ingest, stage_recipe, stage_refine, stage_transcribe
-from pipeline.variants import criar_variacao
+from pipeline.variants import criar_variacao, recompor_hook
 
 router = APIRouter(prefix="/api")
 
@@ -172,6 +172,40 @@ async def create_variant(slug: str, novo_slug: str = Form(...),
         criar_variacao(matriz_dir, jobs_root, novo_slug, str(hook_path),
                        progress_cb=progress_cb)
         return {"slug": novo_slug}
+
+    return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
+
+
+@router.post("/jobs/{slug}/recut-hook")
+def run_recut_hook(slug: str, params: CutParams):
+    """Re-corta só o silêncio do hook de uma variação e recompõe com o corpo
+    ATUAL da matriz. Valida aptidão ANTES de gravar; roda com progresso SSE.
+    Invalida os derivados do trimmed (mesma invalidação de re-detectar pausas)."""
+    jobs_root, *_ = _roots()
+    job_dir = _dir_do_job(slug, jobs_root)
+    cfg_path = job_dir / "job.config.json"
+    cfg = load_json(cfg_path) if cfg_path.exists() else {}
+    hook_source = job_dir / "hook_source.mp4"
+    if cfg.get("papel") != "normal" or not cfg.get("origem_matriz") or not hook_source.exists():
+        raise HTTPException(status_code=409,
+                            detail="esta variação não pode re-cortar o hook")
+    matriz_dir = matriz_do_recut(job_dir, jobs_root)
+    if matriz_dir is None:
+        raise HTTPException(
+            status_code=409,
+            detail="a matriz desta variação foi excluída; o re-corte do hook não é mais possível",
+        )
+    # persiste os novos sliders (recompor_hook os relê do config)
+    update_config(slug, jobs_root, params)
+
+    def work(progress_cb):
+        hook_linhas = recompor_hook(job_dir, matriz_dir, progress_cb=progress_cb)
+        trimmed = job_dir / "trimmed.mp4"
+        return {
+            "trimmed_duration": load_json(job_dir / "trimmed.probe.json")["duration"],
+            "trimmed_mtime": trimmed.stat().st_mtime if trimmed.exists() else 0.0,
+            "hook_linhas": hook_linhas,
+        }
 
     return StreamingResponse(run_with_progress(work), media_type="text/event-stream")
 

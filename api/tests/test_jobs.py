@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 
 from api.jobs import (
-    _tem_conteudo_lista, allowed_file_path, get_state, job_summary_minimo,
-    ProjetoNaoEncontradoError, suggest_hook,
+    ProjetoNaoEncontradoError,
+    _tem_conteudo_lista,
+    allowed_file_path,
+    get_state,
+    job_summary_minimo,
+    suggest_hook,
 )
 from api.models import ProbeOut
 
@@ -134,3 +138,39 @@ class TestTemConteudoLista:
         p = tmp_path / "overlays.json"
         p.write_text("{{{ isto não é json", encoding="utf-8")
         assert _tem_conteudo_lista(p) is True
+
+
+def test_get_state_variacao_expoe_recut(tmp_path, monkeypatch):
+    from api.jobs import get_state
+    from pipeline.job import init_job, load_json, write_json
+    jobs = tmp_path / "jobs"; jobs.mkdir()
+    # matriz apta (trimmed + transcript)
+    m = init_job(jobs, "corpo")
+    (m.dir / "trimmed.mp4").write_bytes(b"c"); write_json(m.dir / "transcript.json", [])
+    mc = load_json(m.dir / "job.config.json"); mc["papel"] = "matriz"; write_json(m.dir / "job.config.json", mc)
+    # variação com hook_source e hook_linhas
+    v = init_job(jobs, "corpo-h1")
+    (v.dir / "hook_source.mp4").write_bytes(b"h")
+    vc = load_json(v.dir / "job.config.json")
+    vc.update({"papel": "normal", "origem_matriz": "corpo", "hook_linhas": 2})
+    write_json(v.dir / "job.config.json", vc)
+
+    st = get_state("corpo-h1", jobs)
+    assert st.has_hook_source is True
+    assert st.hook_linhas == 2
+    assert st.matriz_disponivel is True
+
+
+def test_get_state_variacao_com_matriz_excluida(tmp_path):
+    from api.jobs import get_state
+    from pipeline.job import init_job, load_json, write_json
+    jobs = tmp_path / "jobs"; jobs.mkdir()
+    v = init_job(jobs, "corpo-h1")
+    (v.dir / "hook_source.mp4").write_bytes(b"h")
+    vc = load_json(v.dir / "job.config.json")
+    vc.update({"papel": "normal", "origem_matriz": "corpo"})  # matriz "corpo" não existe
+    write_json(v.dir / "job.config.json", vc)
+
+    st = get_state("corpo-h1", jobs)
+    assert st.has_hook_source is True
+    assert st.matriz_disponivel is False
